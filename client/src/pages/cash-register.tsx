@@ -40,7 +40,7 @@ export default function CashRegister() {
 
   const openSessionMutation = useMutation({
     mutationFn: async () => {
-      return apiRequest("POST", "/api/cash-register/open", {
+      return apiRequest("POST", "/api/cash-register", {
         sessionNumber: generateSessionNumber(),
         openingBalance,
         openedBy: "admin",
@@ -48,6 +48,7 @@ export default function CashRegister() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/cash-register"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cash-register/active"] });
       setIsOpenDialogOpen(false);
       setOpeningBalance(0);
       toast({ title: "Cash register session opened" });
@@ -67,6 +68,7 @@ export default function CashRegister() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/cash-register"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cash-register/active"] });
       setIsCloseDialogOpen(false);
       setActualBalance(0);
       setCloseNotes("");
