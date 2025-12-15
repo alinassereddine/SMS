@@ -7,7 +7,7 @@ import {
   Plus, 
   Minus, 
   CreditCard, 
-  Banknotes, 
+  Wallet, 
   ArrowRightLeft,
   User,
   X,
@@ -351,7 +351,7 @@ export default function POS() {
               <label className="text-sm font-medium mb-2 block">Payment Method</label>
               <div className="grid grid-cols-3 gap-2">
                 {[
-                  { value: "cash", label: "Cash", icon: Banknotes },
+                  { value: "cash", label: "Cash", icon: Wallet },
                   { value: "card", label: "Card", icon: CreditCard },
                   { value: "transfer", label: "Transfer", icon: ArrowRightLeft },
                 ].map(({ value, label, icon: Icon }) => (
