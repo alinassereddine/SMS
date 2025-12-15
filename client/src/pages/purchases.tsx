@@ -1,0 +1,491 @@
+import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { Plus, FileText, MoreHorizontal, Eye, Printer, Trash2, Package } from "lucide-react";
+import { PageHeader } from "@/components/page-header";
+import { DataTable, Column } from "@/components/data-table";
+import { SearchInput } from "@/components/search-input";
+import { StatusBadge } from "@/components/status-badge";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
+import { CurrencyInput } from "@/components/currency-input";
+import { useToast } from "@/hooks/use-toast";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import { formatCurrency, formatDate, generateInvoiceNumber } from "@/lib/utils";
+import type { PurchaseInvoiceWithSupplier, Supplier, Product } from "@shared/schema";
+
+const purchaseFormSchema = z.object({
+  supplierId: z.string().min(1, "Supplier is required"),
+  paidAmount: z.number().min(0),
+  notes: z.string().optional(),
+});
+
+type PurchaseFormValues = z.infer<typeof purchaseFormSchema>;
+
+interface ItemEntry {
+  productId: string;
+  imei: string;
+  unitPrice: number;
+}
+
+export default function Purchases() {
+  const [search, setSearch] = useState("");
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [selectedInvoice, setSelectedInvoice] = useState<PurchaseInvoiceWithSupplier | null>(null);
+  const [itemEntries, setItemEntries] = useState<ItemEntry[]>([{ productId: "", imei: "", unitPrice: 0 }]);
+  const { toast } = useToast();
+
+  const { data: invoices = [], isLoading } = useQuery<PurchaseInvoiceWithSupplier[]>({
+    queryKey: ["/api/purchase-invoices"],
+  });
+
+  const { data: suppliers = [] } = useQuery<Supplier[]>({
+    queryKey: ["/api/suppliers"],
+  });
+
+  const { data: products = [] } = useQuery<Product[]>({
+    queryKey: ["/api/products"],
+  });
+
+  const form = useForm<PurchaseFormValues>({
+    resolver: zodResolver(purchaseFormSchema),
+    defaultValues: {
+      supplierId: "",
+      paidAmount: 0,
+      notes: "",
+    },
+  });
+
+  const createMutation = useMutation({
+    mutationFn: async (data: PurchaseFormValues) => {
+      const validItems = itemEntries.filter(i => i.productId && i.imei && i.unitPrice > 0);
+      if (validItems.length === 0) {
+        throw new Error("At least one item is required");
+      }
+
+      const subtotal = validItems.reduce((sum, i) => sum + i.unitPrice, 0);
+      const paymentType = data.paidAmount >= subtotal ? "full" : data.paidAmount > 0 ? "partial" : "credit";
+
+      return apiRequest("POST", "/api/purchase-invoices", {
+        invoiceNumber: generateInvoiceNumber("PUR"),
+        supplierId: data.supplierId,
+        subtotal,
+        discountAmount: 0,
+        totalAmount: subtotal,
+        paidAmount: data.paidAmount,
+        balanceImpact: subtotal - data.paidAmount,
+        paymentType,
+        notes: data.notes,
+        items: validItems.map(item => ({
+          ...item,
+          quantity: 1,
+          totalPrice: item.unitPrice,
+        })),
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/items"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/suppliers"] });
+      setIsDialogOpen(false);
+      form.reset();
+      setItemEntries([{ productId: "", imei: "", unitPrice: 0 }]);
+      toast({ title: "Purchase invoice created successfully" });
+    },
+    onError: (error: Error) => {
+      toast({ title: error.message || "Failed to create invoice", variant: "destructive" });
+    },
+  });
+
+  const handleSubmit = (data: PurchaseFormValues) => {
+    createMutation.mutate(data);
+  };
+
+  const addItemEntry = () => {
+    setItemEntries([...itemEntries, { productId: "", imei: "", unitPrice: 0 }]);
+  };
+
+  const removeItemEntry = (index: number) => {
+    if (itemEntries.length > 1) {
+      setItemEntries(itemEntries.filter((_, i) => i !== index));
+    }
+  };
+
+  const updateItemEntry = (index: number, field: keyof ItemEntry, value: string | number) => {
+    setItemEntries(itemEntries.map((item, i) => 
+      i === index ? { ...item, [field]: value } : item
+    ));
+  };
+
+  const subtotal = itemEntries.reduce((sum, i) => sum + (i.unitPrice || 0), 0);
+
+  const filteredInvoices = invoices.filter((invoice) =>
+    invoice.invoiceNumber.toLowerCase().includes(search.toLowerCase()) ||
+    invoice.supplier?.name.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const columns: Column<PurchaseInvoiceWithSupplier>[] = [
+    {
+      key: "invoiceNumber",
+      header: "Invoice #",
+      render: (invoice) => (
+        <div className="flex items-center gap-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-500/10">
+            <FileText className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+          </div>
+          <div>
+            <p className="font-mono text-sm font-medium">{invoice.invoiceNumber}</p>
+            <p className="text-xs text-muted-foreground">{formatDate(invoice.date)}</p>
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: "supplier",
+      header: "Supplier",
+      render: (invoice) => (
+        <span className="text-sm">{invoice.supplier?.name || "-"}</span>
+      ),
+    },
+    {
+      key: "items",
+      header: "Items",
+      render: (invoice) => (
+        <Badge variant="secondary" className="text-xs">
+          {invoice.items?.length || 0} item{(invoice.items?.length || 0) !== 1 ? "s" : ""}
+        </Badge>
+      ),
+    },
+    {
+      key: "total",
+      header: "Total",
+      render: (invoice) => (
+        <span className="font-mono text-sm font-medium">
+          {formatCurrency(invoice.totalAmount)}
+        </span>
+      ),
+    },
+    {
+      key: "payment",
+      header: "Payment",
+      render: (invoice) => <StatusBadge status={invoice.paymentType} />,
+    },
+    {
+      key: "actions",
+      header: "",
+      className: "w-12",
+      render: (invoice) => (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" data-testid={`button-actions-${invoice.id}`}>
+              <MoreHorizontal className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => setSelectedInvoice(invoice)}>
+              <Eye className="h-4 w-4 mr-2" />
+              View Details
+            </DropdownMenuItem>
+            <DropdownMenuItem>
+              <Printer className="h-4 w-4 mr-2" />
+              Print
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ),
+    },
+  ];
+
+  const totalPurchases = filteredInvoices.reduce((sum, i) => sum + i.totalAmount, 0);
+  const totalOwed = filteredInvoices.reduce((sum, i) => sum + i.balanceImpact, 0);
+
+  return (
+    <div className="space-y-6">
+      <PageHeader title="Purchase Invoices" description="Manage supplier purchases">
+        <Button onClick={() => setIsDialogOpen(true)} data-testid="button-add-purchase">
+          <Plus className="h-4 w-4 mr-2" />
+          New Purchase
+        </Button>
+      </PageHeader>
+
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card>
+          <CardContent className="pt-6">
+            <div className="text-2xl font-bold">{filteredInvoices.length}</div>
+            <p className="text-xs text-muted-foreground">Total Invoices</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="text-2xl font-bold">{formatCurrency(totalPurchases)}</div>
+            <p className="text-xs text-muted-foreground">Total Purchases</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="text-2xl font-bold text-red-600 dark:text-red-400">
+              {formatCurrency(totalOwed)}
+            </div>
+            <p className="text-xs text-muted-foreground">Outstanding Balance</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="flex items-center gap-4">
+        <SearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder="Search invoices..."
+          className="max-w-sm"
+        />
+      </div>
+
+      <DataTable
+        columns={columns}
+        data={filteredInvoices}
+        isLoading={isLoading}
+        emptyMessage="No purchase invoices found"
+        emptyDescription="Create your first purchase invoice."
+        getRowKey={(i) => i.id}
+      />
+
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>New Purchase Invoice</DialogTitle>
+            <DialogDescription>
+              Add items received from a supplier
+            </DialogDescription>
+          </DialogHeader>
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
+              <FormField
+                control={form.control}
+                name="supplierId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Supplier</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-purchase-supplier">
+                          <SelectValue placeholder="Select supplier" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {suppliers.map((supplier) => (
+                          <SelectItem key={supplier.id} value={supplier.id}>
+                            {supplier.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <FormLabel>Items</FormLabel>
+                  <Button type="button" variant="outline" size="sm" onClick={addItemEntry}>
+                    <Plus className="h-3 w-3 mr-1" />
+                    Add Item
+                  </Button>
+                </div>
+                <div className="space-y-3">
+                  {itemEntries.map((item, index) => (
+                    <div key={index} className="flex gap-2 items-start p-3 rounded-lg bg-muted/50">
+                      <div className="flex-1 grid grid-cols-3 gap-2">
+                        <Select
+                          value={item.productId}
+                          onValueChange={(v) => updateItemEntry(index, "productId", v)}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Product" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {products.map((p) => (
+                              <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Input
+                          placeholder="IMEI"
+                          value={item.imei}
+                          onChange={(e) => updateItemEntry(index, "imei", e.target.value)}
+                          className="font-mono"
+                        />
+                        <CurrencyInput
+                          value={item.unitPrice}
+                          onChange={(v) => updateItemEntry(index, "unitPrice", v)}
+                        />
+                      </div>
+                      {itemEntries.length > 1 && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => removeItemEntry(index)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <Separator />
+
+              <div className="flex justify-between items-center">
+                <span className="text-sm font-medium">Subtotal</span>
+                <span className="font-mono font-bold text-lg">{formatCurrency(subtotal)}</span>
+              </div>
+
+              <FormField
+                control={form.control}
+                name="paidAmount"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Amount Paid</FormLabel>
+                    <FormControl>
+                      <CurrencyInput value={field.value} onChange={field.onChange} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="notes"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Notes</FormLabel>
+                    <FormControl>
+                      <Textarea placeholder="Additional notes..." {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={createMutation.isPending} data-testid="button-save-purchase">
+                  {createMutation.isPending ? "Creating..." : "Create Invoice"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!selectedInvoice} onOpenChange={() => setSelectedInvoice(null)}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Purchase Invoice Details</DialogTitle>
+          </DialogHeader>
+          {selectedInvoice && (
+            <div className="space-y-6">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-xs text-muted-foreground uppercase">Invoice Number</p>
+                  <p className="font-mono font-medium">{selectedInvoice.invoiceNumber}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground uppercase">Date</p>
+                  <p className="font-medium">{formatDate(selectedInvoice.date)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground uppercase">Supplier</p>
+                  <p className="font-medium">{selectedInvoice.supplier?.name}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground uppercase">Payment Status</p>
+                  <StatusBadge status={selectedInvoice.paymentType} />
+                </div>
+              </div>
+
+              <Separator />
+
+              <div>
+                <p className="text-sm font-medium mb-3">Items</p>
+                <div className="space-y-2">
+                  {selectedInvoice.items?.map((item) => (
+                    <div key={item.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                      <div className="flex items-center gap-3">
+                        <Package className="h-4 w-4 text-muted-foreground" />
+                        <div>
+                          <p className="font-medium">{item.product?.name || "Unknown"}</p>
+                          <p className="text-xs text-muted-foreground font-mono">{item.imei}</p>
+                        </div>
+                      </div>
+                      <span className="font-mono font-medium">{formatCurrency(item.unitPrice)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <Separator />
+
+              <div className="space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Total</span>
+                  <span className="font-mono font-bold">{formatCurrency(selectedInvoice.totalAmount)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Paid</span>
+                  <span className="font-mono">{formatCurrency(selectedInvoice.paidAmount || 0)}</span>
+                </div>
+                {selectedInvoice.balanceImpact > 0 && (
+                  <div className="flex justify-between text-red-600 dark:text-red-400">
+                    <span>Balance Due</span>
+                    <span className="font-mono font-bold">{formatCurrency(selectedInvoice.balanceImpact)}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}

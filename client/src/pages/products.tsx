@@ -1,0 +1,314 @@
+import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { Plus, Package, MoreHorizontal, Pencil, Trash2, Archive } from "lucide-react";
+import { PageHeader } from "@/components/page-header";
+import { DataTable, Column } from "@/components/data-table";
+import { SearchInput } from "@/components/search-input";
+import { StatusBadge } from "@/components/status-badge";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useToast } from "@/hooks/use-toast";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import type { Product } from "@shared/schema";
+
+const productFormSchema = z.object({
+  name: z.string().min(1, "Name is required"),
+  brand: z.string().optional(),
+  category: z.string().optional(),
+});
+
+type ProductFormValues = z.infer<typeof productFormSchema>;
+
+const categories = ["Phones", "Tablets", "Accessories", "Laptops", "Other"];
+
+export default function Products() {
+  const [search, setSearch] = useState("");
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const { toast } = useToast();
+
+  const { data: products = [], isLoading } = useQuery<Product[]>({
+    queryKey: ["/api/products"],
+  });
+
+  const form = useForm<ProductFormValues>({
+    resolver: zodResolver(productFormSchema),
+    defaultValues: {
+      name: "",
+      brand: "",
+      category: "",
+    },
+  });
+
+  const createMutation = useMutation({
+    mutationFn: async (data: ProductFormValues) => {
+      return apiRequest("POST", "/api/products", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/products"] });
+      setIsDialogOpen(false);
+      form.reset();
+      toast({ title: "Product created successfully" });
+    },
+    onError: () => {
+      toast({ title: "Failed to create product", variant: "destructive" });
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: ProductFormValues }) => {
+      return apiRequest("PATCH", `/api/products/${id}`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/products"] });
+      setIsDialogOpen(false);
+      setEditingProduct(null);
+      form.reset();
+      toast({ title: "Product updated successfully" });
+    },
+    onError: () => {
+      toast({ title: "Failed to update product", variant: "destructive" });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      return apiRequest("DELETE", `/api/products/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/products"] });
+      toast({ title: "Product deleted successfully" });
+    },
+    onError: () => {
+      toast({ title: "Failed to delete product", variant: "destructive" });
+    },
+  });
+
+  const handleOpenDialog = (product?: Product) => {
+    if (product) {
+      setEditingProduct(product);
+      form.reset({
+        name: product.name,
+        brand: product.brand || "",
+        category: product.category || "",
+      });
+    } else {
+      setEditingProduct(null);
+      form.reset({ name: "", brand: "", category: "" });
+    }
+    setIsDialogOpen(true);
+  };
+
+  const handleSubmit = (data: ProductFormValues) => {
+    if (editingProduct) {
+      updateMutation.mutate({ id: editingProduct.id, data });
+    } else {
+      createMutation.mutate(data);
+    }
+  };
+
+  const filteredProducts = products.filter((product) =>
+    product.name.toLowerCase().includes(search.toLowerCase()) ||
+    product.brand?.toLowerCase().includes(search.toLowerCase()) ||
+    product.category?.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const columns: Column<Product>[] = [
+    {
+      key: "name",
+      header: "Product Name",
+      render: (product) => (
+        <div className="flex items-center gap-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-muted">
+            <Package className="h-4 w-4 text-muted-foreground" />
+          </div>
+          <div>
+            <p className="font-medium">{product.name}</p>
+            {product.brand && (
+              <p className="text-xs text-muted-foreground">{product.brand}</p>
+            )}
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: "category",
+      header: "Category",
+      render: (product) => (
+        <span className="text-sm">{product.category || "-"}</span>
+      ),
+    },
+    {
+      key: "status",
+      header: "Status",
+      render: (product) => (
+        <StatusBadge status={product.archived ? "archived" : "available"} />
+      ),
+    },
+    {
+      key: "actions",
+      header: "",
+      className: "w-12",
+      render: (product) => (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" data-testid={`button-actions-${product.id}`}>
+              <MoreHorizontal className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => handleOpenDialog(product)} data-testid={`button-edit-${product.id}`}>
+              <Pencil className="h-4 w-4 mr-2" />
+              Edit
+            </DropdownMenuItem>
+            <DropdownMenuItem 
+              onClick={() => deleteMutation.mutate(product.id)}
+              className="text-destructive"
+              data-testid={`button-delete-${product.id}`}
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Delete
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ),
+    },
+  ];
+
+  return (
+    <div className="space-y-6">
+      <PageHeader title="Products" description="Manage your product catalog">
+        <Button onClick={() => handleOpenDialog()} data-testid="button-add-product">
+          <Plus className="h-4 w-4 mr-2" />
+          Add Product
+        </Button>
+      </PageHeader>
+
+      <div className="flex items-center gap-4">
+        <SearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder="Search products..."
+          className="max-w-sm"
+        />
+      </div>
+
+      <DataTable
+        columns={columns}
+        data={filteredProducts}
+        isLoading={isLoading}
+        emptyMessage="No products found"
+        emptyDescription="Get started by adding your first product."
+        getRowKey={(p) => p.id}
+      />
+
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{editingProduct ? "Edit Product" : "Add Product"}</DialogTitle>
+            <DialogDescription>
+              {editingProduct ? "Update product details" : "Add a new product to your catalog"}
+            </DialogDescription>
+          </DialogHeader>
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
+              <FormField
+                control={form.control}
+                name="name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Name</FormLabel>
+                    <FormControl>
+                      <Input placeholder="iPhone 15 Pro" {...field} data-testid="input-product-name" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="brand"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Brand</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Apple" {...field} data-testid="input-product-brand" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="category"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Category</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-product-category">
+                          <SelectValue placeholder="Select category" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {categories.map((cat) => (
+                          <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button 
+                  type="submit" 
+                  disabled={createMutation.isPending || updateMutation.isPending}
+                  data-testid="button-save-product"
+                >
+                  {createMutation.isPending || updateMutation.isPending ? "Saving..." : "Save"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
