@@ -19,6 +19,7 @@ import { ArrowLeft, User, Phone, Mail, MapPin, ShoppingCart, CreditCard, Receipt
 import { ExportButton } from "@/components/export-button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import { useAuth } from "@/lib/auth";
 import type { Customer, Sale, Payment, Product } from "@shared/schema";
 
 type SaleItem = {
@@ -59,6 +60,26 @@ type CustomerSummary = {
 export default function CustomerDetails() {
   const { id } = useParams<{ id: string }>();
   const [activeTab, setActiveTab] = useState("orders");
+  const { can } = useAuth();
+
+  // Check if user has permission to view customer details
+  if (!can("customers:details")) {
+    return (
+      <div className="space-y-6">
+        <Link href="/customers">
+          <Button variant="ghost" size="sm">
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back to Customers
+          </Button>
+        </Link>
+        <Card>
+          <CardContent className="py-8 text-center">
+            <p className="text-muted-foreground">You do not have permission to view customer details.</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   const { data, isLoading, error } = useQuery<CustomerSummary>({
     queryKey: ["/api/customers", id, "summary"],

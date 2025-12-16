@@ -19,6 +19,7 @@ import { ArrowLeft, Building2, Phone, Mail, MapPin, Package, CreditCard, Receipt
 import { ExportButton } from "@/components/export-button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import { useAuth } from "@/lib/auth";
 import type { Supplier, PurchaseInvoice, Payment, Product } from "@shared/schema";
 
 type PurchaseItem = {
@@ -58,6 +59,26 @@ type SupplierSummary = {
 export default function SupplierDetails() {
   const { id } = useParams<{ id: string }>();
   const [activeTab, setActiveTab] = useState("purchases");
+  const { can } = useAuth();
+
+  // Check if user has permission to view supplier details
+  if (!can("suppliers:details")) {
+    return (
+      <div className="space-y-6">
+        <Link href="/suppliers">
+          <Button variant="ghost" size="sm">
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back to Suppliers
+          </Button>
+        </Link>
+        <Card>
+          <CardContent className="py-8 text-center">
+            <p className="text-muted-foreground">You do not have permission to view supplier details.</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   const { data, isLoading, error } = useQuery<SupplierSummary>({
     queryKey: ["/api/suppliers", id, "summary"],

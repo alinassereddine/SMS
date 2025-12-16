@@ -38,6 +38,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { formatCurrency } from "@/lib/utils";
+import { useAuth } from "@/lib/auth";
 import type { Customer } from "@shared/schema";
 
 const customerFormSchema = z.object({
@@ -55,6 +56,7 @@ export default function Customers() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const { toast } = useToast();
+  const { can } = useAuth();
 
   const { data: customers = [], isLoading } = useQuery<Customer[]>({
     queryKey: ["/api/customers"],
@@ -150,7 +152,11 @@ export default function Customers() {
     return name.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2);
   };
 
-  const columns: Column<Customer>[] = [
+  const canSeeBalance = can("customers:balance");
+  const canSeeDetails = can("customers:details");
+  const canDelete = can("customers:delete");
+
+  const allColumns: Column<Customer>[] = [
     {
       key: "name",
       header: "Customer",
@@ -180,10 +186,10 @@ export default function Customers() {
         <span className="text-sm">{customer.email || "-"}</span>
       ),
     },
-    {
+    ...(canSeeBalance ? [{
       key: "balance",
       header: "Balance",
-      render: (customer) => {
+      render: (customer: Customer) => {
         const balance = customer.balance || 0;
         const isPositive = balance > 0;
         return (
@@ -209,7 +215,7 @@ export default function Customers() {
         );
       },
       className: "text-right",
-    },
+    }] : []),
     {
       key: "actions",
       header: "",
@@ -222,28 +228,34 @@ export default function Customers() {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem asChild>
-              <Link href={`/customers/${customer.id}`}>
-                <Eye className="h-4 w-4 mr-2" />
-                View Details
-              </Link>
-            </DropdownMenuItem>
+            {canSeeDetails && (
+              <DropdownMenuItem asChild>
+                <Link href={`/customers/${customer.id}`}>
+                  <Eye className="h-4 w-4 mr-2" />
+                  View Details
+                </Link>
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem onClick={() => handleOpenDialog(customer)}>
               <Pencil className="h-4 w-4 mr-2" />
               Edit
             </DropdownMenuItem>
-            <DropdownMenuItem 
-              onClick={() => deleteMutation.mutate(customer.id)}
-              className="text-destructive"
-            >
-              <Trash2 className="h-4 w-4 mr-2" />
-              Delete
-            </DropdownMenuItem>
+            {canDelete && (
+              <DropdownMenuItem 
+                onClick={() => deleteMutation.mutate(customer.id)}
+                className="text-destructive"
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Delete
+              </DropdownMenuItem>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       ),
     },
   ];
+
+  const columns = allColumns;
 
   return (
     <div className="space-y-6">

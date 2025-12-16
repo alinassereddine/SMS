@@ -38,6 +38,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { formatCurrency } from "@/lib/utils";
+import { useAuth } from "@/lib/auth";
 import type { Supplier } from "@shared/schema";
 
 const supplierFormSchema = z.object({
@@ -55,6 +56,7 @@ export default function Suppliers() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
   const { toast } = useToast();
+  const { can } = useAuth();
 
   const { data: suppliers = [], isLoading } = useQuery<Supplier[]>({
     queryKey: ["/api/suppliers"],
@@ -150,7 +152,11 @@ export default function Suppliers() {
     return name.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2);
   };
 
-  const columns: Column<Supplier>[] = [
+  const canSeeBalance = can("suppliers:balance");
+  const canSeeDetails = can("suppliers:details");
+  const canDelete = can("suppliers:delete");
+
+  const allColumns: Column<Supplier>[] = [
     {
       key: "name",
       header: "Supplier",
@@ -180,10 +186,10 @@ export default function Suppliers() {
         <span className="text-sm">{supplier.email || "-"}</span>
       ),
     },
-    {
+    ...(canSeeBalance ? [{
       key: "balance",
       header: "Balance",
-      render: (supplier) => {
+      render: (supplier: Supplier) => {
         const balance = supplier.balance || 0;
         const isPositive = balance > 0;
         return (
@@ -209,7 +215,7 @@ export default function Suppliers() {
         );
       },
       className: "text-right",
-    },
+    }] : []),
     {
       key: "actions",
       header: "",
@@ -222,28 +228,34 @@ export default function Suppliers() {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem asChild>
-              <Link href={`/suppliers/${supplier.id}`}>
-                <Eye className="h-4 w-4 mr-2" />
-                View Details
-              </Link>
-            </DropdownMenuItem>
+            {canSeeDetails && (
+              <DropdownMenuItem asChild>
+                <Link href={`/suppliers/${supplier.id}`}>
+                  <Eye className="h-4 w-4 mr-2" />
+                  View Details
+                </Link>
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem onClick={() => handleOpenDialog(supplier)}>
               <Pencil className="h-4 w-4 mr-2" />
               Edit
             </DropdownMenuItem>
-            <DropdownMenuItem 
-              onClick={() => deleteMutation.mutate(supplier.id)}
-              className="text-destructive"
-            >
-              <Trash2 className="h-4 w-4 mr-2" />
-              Delete
-            </DropdownMenuItem>
+            {canDelete && (
+              <DropdownMenuItem 
+                onClick={() => deleteMutation.mutate(supplier.id)}
+                className="text-destructive"
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Delete
+              </DropdownMenuItem>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       ),
     },
   ];
+
+  const columns = allColumns;
 
   return (
     <div className="space-y-6">

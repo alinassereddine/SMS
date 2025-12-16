@@ -49,6 +49,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { formatCurrency, formatDate, generateInvoiceNumber } from "@/lib/utils";
+import { useAuth } from "@/lib/auth";
 import type { PurchaseInvoiceWithSupplier, Supplier, Product } from "@shared/schema";
 
 const purchaseFormSchema = z.object({
@@ -83,6 +84,9 @@ export default function Purchases() {
   const [editSupplierId, setEditSupplierId] = useState<string>("");
   const [editDate, setEditDate] = useState<string>("");
   const [editDiscount, setEditDiscount] = useState(0);
+  const { can } = useAuth();
+  const canSeeBalance = can("purchases:balance");
+  const canDelete = can("purchases:delete");
   const [editPaidAmount, setEditPaidAmount] = useState(0);
   const [editNotes, setEditNotes] = useState("");
   const [showAddItem, setShowAddItem] = useState(false);
@@ -363,13 +367,15 @@ export default function Purchases() {
               <Printer className="h-4 w-4 mr-2" />
               Print
             </DropdownMenuItem>
-            <DropdownMenuItem 
-              onClick={() => setDeleteConfirmInvoice(invoice)}
-              className="text-destructive"
-            >
-              <Trash2 className="h-4 w-4 mr-2" />
-              Delete
-            </DropdownMenuItem>
+            {canDelete && (
+              <DropdownMenuItem 
+                onClick={() => setDeleteConfirmInvoice(invoice)}
+                className="text-destructive"
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Delete
+              </DropdownMenuItem>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       ),
@@ -404,7 +410,7 @@ export default function Purchases() {
         </div>
       </PageHeader>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className={`grid gap-4 ${canSeeBalance ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
         <Card>
           <CardContent className="pt-6">
             <div className="text-2xl font-bold">{filteredInvoices.length}</div>
@@ -417,14 +423,16 @@ export default function Purchases() {
             <p className="text-xs text-muted-foreground">Total Purchases</p>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-2xl font-bold text-red-600 dark:text-red-400">
-              {formatCurrency(totalOwed)}
-            </div>
-            <p className="text-xs text-muted-foreground">Outstanding Balance</p>
-          </CardContent>
-        </Card>
+        {canSeeBalance && (
+          <Card>
+            <CardContent className="pt-6">
+              <div className="text-2xl font-bold text-red-600 dark:text-red-400">
+                {formatCurrency(totalOwed)}
+              </div>
+              <p className="text-xs text-muted-foreground">Outstanding Balance</p>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       <div className="flex items-center gap-4">
