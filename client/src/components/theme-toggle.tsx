@@ -1,4 +1,4 @@
-import { Moon, Sun } from "lucide-react";
+import { Moon, Sun, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -29,6 +29,10 @@ export function ThemeToggle() {
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => setTheme("system")} data-testid="menu-theme-system">
           System
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => setTheme("nova-nexa")} data-testid="menu-theme-nova-nexa">
+          <Sparkles className="mr-2 h-4 w-4" />
+          Nova Nexa
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

@@ -165,6 +165,85 @@
   --destructive-border: hsl(from hsl(var(--destructive)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
 }
 
+/* NOVA NEXA THEME - Dark blue with cyan accents */
+.nova-nexa {
+  --button-outline: rgba(255,255,255, .10);
+  --badge-outline: rgba(255,255,255, .05);
+  --opaque-button-border-intensity: 9;
+  --elevate-1: rgba(255,255,255, .04);
+  --elevate-2: rgba(255,255,255, .09);
+  --background: 210 50% 6%;
+  --foreground: 180 100% 95%;
+  --border: 210 40% 15%;
+  --card: 210 45% 9%;
+  --card-foreground: 180 50% 90%;
+  --card-border: 210 40% 14%;
+  --sidebar: 210 50% 7%;
+  --sidebar-foreground: 180 50% 90%;
+  --sidebar-border: 210 40% 12%;
+  --sidebar-primary: 180 100% 40%;
+  --sidebar-primary-foreground: 210 50% 6%;
+  --sidebar-accent: 180 50% 20%;
+  --sidebar-accent-foreground: 180 100% 90%;
+  --sidebar-ring: 180 100% 40%;
+  --popover: 210 45% 10%;
+  --popover-foreground: 180 100% 95%;
+  --popover-border: 210 40% 18%;
+  --primary: 180 100% 40%;
+  --primary-foreground: 210 50% 6%;
+  --secondary: 210 40% 14%;
+  --secondary-foreground: 180 100% 95%;
+  --muted: 210 40% 15%;
+  --muted-foreground: 180 30% 50%;
+  --accent: 180 40% 18%;
+  --accent-foreground: 180 100% 90%;
+  --destructive: 356 91% 54%;
+  --destructive-foreground: 0 0% 100%;
+  --input: 210 40% 20%;
+  --ring: 180 100% 40%;
+  --chart-1: 180 100% 45%;
+  --chart-2: 160 100% 36%;
+  --chart-3: 200 100% 50%;
+  --chart-4: 147 79% 42%;
+  --chart-5: 220 100% 60%;
+  --shadow-2xs: 0px 2px 0px 0px hsl(0 0% 0% / 0.00);
+  --shadow-xs: 0px 2px 0px 0px hsl(0 0% 0% / 0.00);
+  --shadow-sm: 0px 2px 0px 0px hsl(0 0% 0% / 0.00), 0px 1px 2px -1px hsl(0 0% 0% / 0.00);
+  --shadow: 0px 2px 0px 0px hsl(0 0% 0% / 0.00), 0px 1px 2px -1px hsl(0 0% 0% / 0.00);
+  --shadow-md: 0px 2px 0px 0px hsl(0 0% 0% / 0.00), 0px 2px 4px -1px hsl(0 0% 0% / 0.00);
+  --shadow-lg: 0px 2px 0px 0px hsl(0 0% 0% / 0.00), 0px 4px 6px -1px hsl(0 0% 0% / 0.00);
+  --shadow-xl: 0px 2px 0px 0px hsl(0 0% 0% / 0.00), 0px 8px 10px -1px hsl(0 0% 0% / 0.00);
+  --shadow-2xl: 0px 2px 0px 0px hsl(0 0% 0% / 0.00);
+
+  /* Fallback for older browsers */
+  --sidebar-primary-border: hsl(var(--sidebar-primary));
+  --sidebar-primary-border: hsl(from hsl(var(--sidebar-primary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+
+  /* Fallback for older browsers */
+  --sidebar-accent-border: hsl(var(--sidebar-accent));
+  --sidebar-accent-border: hsl(from hsl(var(--sidebar-accent)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+
+  /* Fallback for older browsers */
+  --primary-border: hsl(var(--primary));
+  --primary-border: hsl(from hsl(var(--primary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+
+  /* Fallback for older browsers */
+  --secondary-border: hsl(var(--secondary));
+  --secondary-border: hsl(from hsl(var(--secondary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+
+  /* Fallback for older browsers */
+  --muted-border: hsl(var(--muted));
+  --muted-border: hsl(from hsl(var(--muted)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+
+  /* Fallback for older browsers */
+  --accent-border: hsl(var(--accent));
+  --accent-border: hsl(from hsl(var(--accent)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+
+  /* Fallback for older browsers */
+  --destructive-border: hsl(var(--destructive));
+  --destructive-border: hsl(from hsl(var(--destructive)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+}
+
 @layer base {
   * {
     @apply border-border;
