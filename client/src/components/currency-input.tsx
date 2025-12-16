@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
@@ -19,11 +19,27 @@ export function CurrencyInput({
   ...rest
 }: CurrencyInputProps) {
   const [displayValue, setDisplayValue] = useState("");
+  const [isFocused, setIsFocused] = useState(false);
+  const lastExternalValue = useRef(value);
 
+  // Only sync from external value when not focused and value changed externally
   useEffect(() => {
-    if (value === 0 && displayValue === "") return;
-    setDisplayValue((value / 100).toFixed(2));
-  }, [value]);
+    if (!isFocused && value !== lastExternalValue.current) {
+      lastExternalValue.current = value;
+      if (value === 0) {
+        setDisplayValue("");
+      } else {
+        setDisplayValue((value / 100).toFixed(2));
+      }
+    }
+  }, [value, isFocused]);
+
+  // Initialize display value on mount
+  useEffect(() => {
+    if (value !== 0) {
+      setDisplayValue((value / 100).toFixed(2));
+    }
+  }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const rawValue = e.target.value.replace(/[^0-9.]/g, "");
@@ -31,18 +47,26 @@ export function CurrencyInput({
     
     const numericValue = parseFloat(rawValue);
     if (!isNaN(numericValue)) {
-      onChange(Math.round(numericValue * 100));
+      const cents = Math.round(numericValue * 100);
+      lastExternalValue.current = cents;
+      onChange(cents);
     } else if (rawValue === "" || rawValue === ".") {
+      lastExternalValue.current = 0;
       onChange(0);
     }
   };
 
+  const handleFocus = () => {
+    setIsFocused(true);
+  };
+
   const handleBlur = () => {
+    setIsFocused(false);
     const numericValue = parseFloat(displayValue);
     if (!isNaN(numericValue)) {
       setDisplayValue(numericValue.toFixed(2));
     } else {
-      setDisplayValue("0.00");
+      setDisplayValue("");
       onChange(0);
     }
   };
@@ -57,6 +81,7 @@ export function CurrencyInput({
         placeholder={placeholder}
         value={displayValue}
         onChange={handleChange}
+        onFocus={handleFocus}
         onBlur={handleBlur}
         className={cn("pl-7 font-mono", className)}
         disabled={disabled}
