@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, FileText, MoreHorizontal, Eye, Printer, Trash2, Package } from "lucide-react";
+import { Plus, FileText, MoreHorizontal, Eye, Printer, Trash2, Package, AlertTriangle } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { DataTable, Column } from "@/components/data-table";
 import { SearchInput } from "@/components/search-input";
@@ -67,6 +67,7 @@ export default function Purchases() {
   const [search, setSearch] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<PurchaseInvoiceWithSupplier | null>(null);
+  const [deleteConfirmInvoice, setDeleteConfirmInvoice] = useState<PurchaseInvoiceWithSupplier | null>(null);
   const [itemEntries, setItemEntries] = useState<ItemEntry[]>([{ productId: "", imei: "", unitPrice: 0 }]);
   const { toast } = useToast();
 
@@ -129,6 +130,22 @@ export default function Purchases() {
     },
     onError: (error: Error) => {
       toast({ title: error.message || "Failed to create invoice", variant: "destructive" });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      return apiRequest("DELETE", `/api/purchase-invoices/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/items"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/suppliers"] });
+      setDeleteConfirmInvoice(null);
+      toast({ title: "Purchase invoice deleted successfully" });
+    },
+    onError: (error: Error) => {
+      toast({ title: error.message || "Failed to delete invoice", variant: "destructive" });
     },
   });
 
@@ -224,6 +241,13 @@ export default function Purchases() {
             <DropdownMenuItem>
               <Printer className="h-4 w-4 mr-2" />
               Print
+            </DropdownMenuItem>
+            <DropdownMenuItem 
+              onClick={() => setDeleteConfirmInvoice(invoice)}
+              className="text-destructive"
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Delete
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -484,6 +508,35 @@ export default function Purchases() {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!deleteConfirmInvoice} onOpenChange={() => setDeleteConfirmInvoice(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+              Delete Purchase Invoice
+            </DialogTitle>
+            <DialogDescription>
+              This action cannot be undone. This will permanently delete invoice{" "}
+              <span className="font-mono font-medium">{deleteConfirmInvoice?.invoiceNumber}</span>{" "}
+              and remove all associated inventory items.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteConfirmInvoice(null)}>
+              Cancel
+            </Button>
+            <Button 
+              variant="destructive" 
+              onClick={() => deleteConfirmInvoice && deleteMutation.mutate(deleteConfirmInvoice.id)}
+              disabled={deleteMutation.isPending}
+              data-testid="button-confirm-delete"
+            >
+              {deleteMutation.isPending ? "Deleting..." : "Delete"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

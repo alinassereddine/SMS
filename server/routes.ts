@@ -366,6 +366,12 @@ export async function registerRoutes(
     try {
       const data = createSaleSchema.parse(req.body);
       
+      // Check for active cash register session
+      const activeSession = await storage.getActiveCashRegisterSession();
+      if (!activeSession) {
+        return res.status(400).json({ error: "No open cash register session. Please open a session first." });
+      }
+      
       // Generate sale number
       const sales = await storage.getSales();
       const saleNumber = `S${String(sales.length + 1).padStart(6, "0")}`;
@@ -388,9 +394,6 @@ export async function registerRoutes(
       }));
 
       const balanceImpact = data.totalAmount - (data.paidAmount || 0);
-
-      // Get active cash register session
-      const activeSession = await storage.getActiveCashRegisterSession();
 
       // Create the sale
       const sale = await storage.createSale({
@@ -450,6 +453,61 @@ export async function registerRoutes(
         return res.status(400).json({ error: error.message });
       }
       res.status(500).json({ error: "Failed to create sale" });
+    }
+  });
+
+  app.delete("/api/sales/:id", requirePermission("sales:delete"), async (req, res) => {
+    try {
+      const sale = await storage.getSale(req.params.id);
+      if (!sale) return res.status(404).json({ error: "Sale not found" });
+
+      if (sale.cashRegisterSessionId) {
+        const session = await storage.getCashRegisterSession(sale.cashRegisterSessionId);
+        if (session && session.status === "closed") {
+          return res.status(400).json({ 
+            error: "Cannot delete: Sale is linked to a closed cash register session" 
+          });
+        }
+      }
+
+      if (sale.customerId && sale.balanceImpact > 0) {
+        const customer = await storage.getCustomer(sale.customerId);
+        if (customer && (customer.balance || 0) < sale.balanceImpact) {
+          return res.status(400).json({ 
+            error: "Cannot delete: Customer has made payments against this sale. The remaining balance is less than the original amount owed." 
+          });
+        }
+      }
+
+      const saleItems = await storage.getSaleItems(sale.id);
+
+      for (const saleItem of saleItems) {
+        if (saleItem.itemId) {
+          await storage.updateItem(saleItem.itemId, {
+            status: "available",
+            salePrice: null,
+            saleId: null,
+            customerId: null,
+            soldAt: null,
+          });
+        }
+      }
+
+      if (sale.customerId && sale.balanceImpact > 0) {
+        const customer = await storage.getCustomer(sale.customerId);
+        if (customer) {
+          await storage.updateCustomer(sale.customerId, {
+            balance: Math.max(0, (customer.balance || 0) - sale.balanceImpact),
+          });
+        }
+      }
+
+      await storage.deleteSaleItems(sale.id);
+      await storage.deleteSale(sale.id);
+
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete sale" });
     }
   });
 
@@ -526,6 +584,12 @@ export async function registerRoutes(
     try {
       const data = createPurchaseInvoiceSchema.parse(req.body);
       
+      // Check for active cash register session
+      const activeSession = await storage.getActiveCashRegisterSession();
+      if (!activeSession) {
+        return res.status(400).json({ error: "No open cash register session. Please open a session first." });
+      }
+      
       // Generate invoice number
       const invoices = await storage.getPurchaseInvoices();
       const invoiceNumber = `PI${String(invoices.length + 1).padStart(6, "0")}`;
@@ -594,6 +658,60 @@ export async function registerRoutes(
         return res.status(400).json({ error: error.message });
       }
       res.status(500).json({ error: "Failed to create purchase invoice" });
+    }
+  });
+
+  app.delete("/api/purchase-invoices/:id", requirePermission("purchases:delete"), async (req, res) => {
+    try {
+      const invoice = await storage.getPurchaseInvoice(req.params.id);
+      if (!invoice) return res.status(404).json({ error: "Invoice not found" });
+
+      const invoiceItems = await storage.getPurchaseInvoiceItems(invoice.id);
+
+      for (const invoiceItem of invoiceItems) {
+        if (invoiceItem.itemId) {
+          const item = await storage.getItem(invoiceItem.itemId);
+          if (item && item.status === "sold") {
+            return res.status(400).json({ 
+              error: `Cannot delete: Item ${item.imei} has been sold` 
+            });
+          }
+        }
+      }
+
+      if (invoice.balanceImpact > 0) {
+        const supplier = await storage.getSupplier(invoice.supplierId);
+        if (supplier && (supplier.balance || 0) < invoice.balanceImpact) {
+          return res.status(400).json({ 
+            error: "Cannot delete: Payments have been made against this purchase. The remaining balance is less than the original amount owed." 
+          });
+        }
+      }
+
+      for (const invoiceItem of invoiceItems) {
+        if (invoiceItem.itemId) {
+          const item = await storage.getItem(invoiceItem.itemId);
+          if (item && !item.archived) {
+            await storage.deleteItem(invoiceItem.itemId);
+          }
+        }
+      }
+
+      if (invoice.balanceImpact > 0) {
+        const supplier = await storage.getSupplier(invoice.supplierId);
+        if (supplier) {
+          await storage.updateSupplier(invoice.supplierId, {
+            balance: Math.max(0, (supplier.balance || 0) - invoice.balanceImpact),
+          });
+        }
+      }
+
+      await storage.deletePurchaseInvoiceItems(invoice.id);
+      await storage.deletePurchaseInvoice(invoice.id);
+
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete purchase invoice" });
     }
   });
 

@@ -1,6 +1,8 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Eye, Receipt, MoreHorizontal, Printer } from "lucide-react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { Eye, Receipt, MoreHorizontal, Printer, Trash2, AlertTriangle } from "lucide-react";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import { PageHeader } from "@/components/page-header";
 import { DataTable, Column } from "@/components/data-table";
 import { SearchInput } from "@/components/search-input";
@@ -10,6 +12,8 @@ import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -36,9 +40,27 @@ export default function Sales() {
   const [search, setSearch] = useState("");
   const [paymentFilter, setPaymentFilter] = useState<string>("all");
   const [selectedSale, setSelectedSale] = useState<SaleWithCustomer | null>(null);
+  const [deleteConfirmSale, setDeleteConfirmSale] = useState<SaleWithCustomer | null>(null);
+  const { toast } = useToast();
 
   const { data: sales = [], isLoading } = useQuery<SaleWithCustomer[]>({
     queryKey: ["/api/sales"],
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      return apiRequest("DELETE", `/api/sales/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sales"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/items"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
+      setDeleteConfirmSale(null);
+      toast({ title: "Sale deleted successfully" });
+    },
+    onError: (error: Error) => {
+      toast({ title: error.message || "Failed to delete sale", variant: "destructive" });
+    },
   });
 
   const filteredSales = sales.filter((sale) => {
@@ -130,6 +152,13 @@ export default function Sales() {
             <DropdownMenuItem>
               <Printer className="h-4 w-4 mr-2" />
               Print Receipt
+            </DropdownMenuItem>
+            <DropdownMenuItem 
+              onClick={() => setDeleteConfirmSale(sale)}
+              className="text-destructive"
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Delete
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -291,6 +320,35 @@ export default function Sales() {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!deleteConfirmSale} onOpenChange={() => setDeleteConfirmSale(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+              Delete Sale
+            </DialogTitle>
+            <DialogDescription>
+              This action cannot be undone. This will permanently delete sale{" "}
+              <span className="font-mono font-medium">{deleteConfirmSale?.saleNumber}</span>{" "}
+              and return all items back to available inventory.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteConfirmSale(null)}>
+              Cancel
+            </Button>
+            <Button 
+              variant="destructive" 
+              onClick={() => deleteConfirmSale && deleteMutation.mutate(deleteConfirmSale.id)}
+              disabled={deleteMutation.isPending}
+              data-testid="button-confirm-delete"
+            >
+              {deleteMutation.isPending ? "Deleting..." : "Delete"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

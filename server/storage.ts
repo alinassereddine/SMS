@@ -56,17 +56,21 @@ export interface IStorage {
   getPurchaseInvoice(id: string): Promise<PurchaseInvoice | undefined>;
   createPurchaseInvoice(data: InsertPurchaseInvoice): Promise<PurchaseInvoice>;
   updatePurchaseInvoice(id: string, data: Partial<InsertPurchaseInvoice>): Promise<PurchaseInvoice>;
+  deletePurchaseInvoice(id: string): Promise<void>;
 
   getPurchaseInvoiceItems(invoiceId: string): Promise<PurchaseInvoiceItem[]>;
   createPurchaseInvoiceItem(data: InsertPurchaseInvoiceItem): Promise<PurchaseInvoiceItem>;
+  deletePurchaseInvoiceItems(invoiceId: string): Promise<void>;
 
   getSales(): Promise<Sale[]>;
   getSale(id: string): Promise<Sale | undefined>;
   createSale(data: InsertSale): Promise<Sale>;
   updateSale(id: string, data: Partial<InsertSale>): Promise<Sale>;
+  deleteSale(id: string): Promise<void>;
 
   getSaleItems(saleId: string): Promise<SaleItem[]>;
   createSaleItem(data: InsertSaleItem): Promise<SaleItem>;
+  deleteSaleItems(saleId: string): Promise<void>;
 
   getPayments(): Promise<Payment[]>;
   getPayment(id: string): Promise<Payment | undefined>;
@@ -236,6 +240,10 @@ export class DatabaseStorage implements IStorage {
     return invoice;
   }
 
+  async deletePurchaseInvoice(id: string): Promise<void> {
+    await db.delete(purchaseInvoices).where(eq(purchaseInvoices.id, id));
+  }
+
   async getPurchaseInvoiceItems(invoiceId: string): Promise<PurchaseInvoiceItem[]> {
     return await db.select().from(purchaseInvoiceItems).where(eq(purchaseInvoiceItems.invoiceId, invoiceId));
   }
@@ -243,6 +251,10 @@ export class DatabaseStorage implements IStorage {
   async createPurchaseInvoiceItem(data: InsertPurchaseInvoiceItem): Promise<PurchaseInvoiceItem> {
     const [item] = await db.insert(purchaseInvoiceItems).values(data).returning();
     return item;
+  }
+
+  async deletePurchaseInvoiceItems(invoiceId: string): Promise<void> {
+    await db.delete(purchaseInvoiceItems).where(eq(purchaseInvoiceItems.invoiceId, invoiceId));
   }
 
   async getSales(): Promise<Sale[]> {
@@ -264,6 +276,10 @@ export class DatabaseStorage implements IStorage {
     return sale;
   }
 
+  async deleteSale(id: string): Promise<void> {
+    await db.delete(sales).where(eq(sales.id, id));
+  }
+
   async getSaleItems(saleId: string): Promise<SaleItem[]> {
     return await db.select().from(saleItems).where(eq(saleItems.saleId, saleId));
   }
@@ -271,6 +287,10 @@ export class DatabaseStorage implements IStorage {
   async createSaleItem(data: InsertSaleItem): Promise<SaleItem> {
     const [item] = await db.insert(saleItems).values(data).returning();
     return item;
+  }
+
+  async deleteSaleItems(saleId: string): Promise<void> {
+    await db.delete(saleItems).where(eq(saleItems.saleId, saleId));
   }
 
   async getPayments(): Promise<Payment[]> {
