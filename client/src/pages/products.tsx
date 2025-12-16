@@ -48,11 +48,17 @@ const productFormSchema = z.object({
   name: z.string().min(1, "Name is required"),
   brand: z.string().optional(),
   category: z.string().optional(),
+  storage: z.string().optional(),
+  ram: z.string().optional(),
+  condition: z.string().optional(),
 });
 
 type ProductFormValues = z.infer<typeof productFormSchema>;
 
 const categories = ["Phones", "Tablets", "Accessories", "Laptops", "Other"];
+const storageOptions = ["32GB", "64GB", "128GB", "256GB", "512GB", "1TB", "2TB"];
+const ramOptions = ["1GB", "2GB", "3GB", "4GB", "6GB", "8GB", "10GB", "12GB", "16GB", "24GB", "32GB", "64GB"];
+const conditionOptions = ["New", "Used", "Refurbished", "Like New", "Good", "Fair"];
 
 export default function Products() {
   const [search, setSearch] = useState("");
@@ -70,12 +76,20 @@ export default function Products() {
       name: "",
       brand: "",
       category: "",
+      storage: "",
+      ram: "",
+      condition: "",
     },
   });
 
   const createMutation = useMutation({
     mutationFn: async (data: ProductFormValues) => {
-      return apiRequest("POST", "/api/products", data);
+      const { storage, ram, condition, ...rest } = data;
+      const specifications: Record<string, string> = {};
+      if (storage && storage !== "none") specifications.storage = storage;
+      if (ram && ram !== "none") specifications.ram = ram;
+      if (condition && condition !== "none") specifications.condition = condition;
+      return apiRequest("POST", "/api/products", { ...rest, specifications });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/products"] });
@@ -90,7 +104,12 @@ export default function Products() {
 
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: ProductFormValues }) => {
-      return apiRequest("PATCH", `/api/products/${id}`, data);
+      const { storage, ram, condition, ...rest } = data;
+      const specifications: Record<string, string> = {};
+      if (storage && storage !== "none") specifications.storage = storage;
+      if (ram && ram !== "none") specifications.ram = ram;
+      if (condition && condition !== "none") specifications.condition = condition;
+      return apiRequest("PATCH", `/api/products/${id}`, { ...rest, specifications });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/products"] });
@@ -120,14 +139,18 @@ export default function Products() {
   const handleOpenDialog = (product?: Product) => {
     if (product) {
       setEditingProduct(product);
+      const specs = (product.specifications || {}) as Record<string, string>;
       form.reset({
         name: product.name,
         brand: product.brand || "",
         category: product.category || "",
+        storage: specs.storage || "",
+        ram: specs.ram || "",
+        condition: specs.condition || "",
       });
     } else {
       setEditingProduct(null);
-      form.reset({ name: "", brand: "", category: "" });
+      form.reset({ name: "", brand: "", category: "", storage: "", ram: "", condition: "" });
     }
     setIsDialogOpen(true);
   };
@@ -293,6 +316,77 @@ export default function Products() {
                   </FormItem>
                 )}
               />
+              <div className="grid grid-cols-3 gap-3">
+                <FormField
+                  control={form.control}
+                  name="storage"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Storage</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value || "none"}>
+                        <FormControl>
+                          <SelectTrigger data-testid="select-product-storage">
+                            <SelectValue placeholder="Select" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="none">None</SelectItem>
+                          {storageOptions.map((opt) => (
+                            <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="ram"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>RAM</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value || "none"}>
+                        <FormControl>
+                          <SelectTrigger data-testid="select-product-ram">
+                            <SelectValue placeholder="Select" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="none">None</SelectItem>
+                          {ramOptions.map((opt) => (
+                            <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="condition"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Condition</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value || "none"}>
+                        <FormControl>
+                          <SelectTrigger data-testid="select-product-condition">
+                            <SelectValue placeholder="Select" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="none">None</SelectItem>
+                          {conditionOptions.map((opt) => (
+                            <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
                   Cancel
