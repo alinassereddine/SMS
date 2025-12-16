@@ -41,32 +41,48 @@ export interface IStorage {
   deleteItem(id: string): Promise<void>;
 
   getCustomers(): Promise<Customer[]>;
+  getArchivedCustomers(): Promise<Customer[]>;
   getCustomer(id: string): Promise<Customer | undefined>;
   createCustomer(data: InsertCustomer): Promise<Customer>;
   updateCustomer(id: string, data: Partial<InsertCustomer>): Promise<Customer>;
   deleteCustomer(id: string): Promise<void>;
+  archiveCustomer(id: string): Promise<void>;
+  restoreCustomer(id: string): Promise<void>;
+  hardDeleteCustomer(id: string): Promise<void>;
 
   getSuppliers(): Promise<Supplier[]>;
+  getArchivedSuppliers(): Promise<Supplier[]>;
   getSupplier(id: string): Promise<Supplier | undefined>;
   createSupplier(data: InsertSupplier): Promise<Supplier>;
   updateSupplier(id: string, data: Partial<InsertSupplier>): Promise<Supplier>;
   deleteSupplier(id: string): Promise<void>;
+  archiveSupplier(id: string): Promise<void>;
+  restoreSupplier(id: string): Promise<void>;
+  hardDeleteSupplier(id: string): Promise<void>;
 
   getPurchaseInvoices(): Promise<PurchaseInvoice[]>;
+  getArchivedPurchaseInvoices(): Promise<PurchaseInvoice[]>;
   getPurchaseInvoice(id: string): Promise<PurchaseInvoice | undefined>;
   createPurchaseInvoice(data: InsertPurchaseInvoice): Promise<PurchaseInvoice>;
   updatePurchaseInvoice(id: string, data: Partial<InsertPurchaseInvoice>): Promise<PurchaseInvoice>;
   deletePurchaseInvoice(id: string): Promise<void>;
+  archivePurchaseInvoice(id: string): Promise<void>;
+  restorePurchaseInvoice(id: string): Promise<void>;
+  hardDeletePurchaseInvoice(id: string): Promise<void>;
 
   getPurchaseInvoiceItems(invoiceId: string): Promise<PurchaseInvoiceItem[]>;
   createPurchaseInvoiceItem(data: InsertPurchaseInvoiceItem): Promise<PurchaseInvoiceItem>;
   deletePurchaseInvoiceItems(invoiceId: string): Promise<void>;
 
   getSales(): Promise<Sale[]>;
+  getArchivedSales(): Promise<Sale[]>;
   getSale(id: string): Promise<Sale | undefined>;
   createSale(data: InsertSale): Promise<Sale>;
   updateSale(id: string, data: Partial<InsertSale>): Promise<Sale>;
   deleteSale(id: string): Promise<void>;
+  archiveSale(id: string): Promise<void>;
+  restoreSale(id: string): Promise<void>;
+  hardDeleteSale(id: string): Promise<void>;
 
   getSaleItems(saleId: string): Promise<SaleItem[]>;
   createSaleItem(data: InsertSaleItem): Promise<SaleItem>;
@@ -198,6 +214,29 @@ export class DatabaseStorage implements IStorage {
     await db.update(customers).set({ archived: true }).where(eq(customers.id, id));
   }
 
+  async getArchivedCustomers(): Promise<Customer[]> {
+    return await db.select().from(customers).where(eq(customers.archived, true));
+  }
+
+  async archiveCustomer(id: string): Promise<void> {
+    await db.update(customers).set({ archived: true }).where(eq(customers.id, id));
+  }
+
+  async restoreCustomer(id: string): Promise<void> {
+    await db.update(customers).set({ archived: false }).where(eq(customers.id, id));
+  }
+
+  async hardDeleteCustomer(id: string): Promise<void> {
+    // Delete all related payments
+    await db.delete(payments).where(and(eq(payments.type, "customer"), eq(payments.entityId, id)));
+    // Update items to remove customer reference
+    await db.update(items).set({ customerId: null }).where(eq(items.customerId, id));
+    // Update sales to remove customer reference
+    await db.update(sales).set({ customerId: null }).where(eq(sales.customerId, id));
+    // Delete the customer
+    await db.delete(customers).where(eq(customers.id, id));
+  }
+
   async getSuppliers(): Promise<Supplier[]> {
     return await db.select().from(suppliers).where(eq(suppliers.archived, false));
   }
@@ -221,6 +260,29 @@ export class DatabaseStorage implements IStorage {
     await db.update(suppliers).set({ archived: true }).where(eq(suppliers.id, id));
   }
 
+  async getArchivedSuppliers(): Promise<Supplier[]> {
+    return await db.select().from(suppliers).where(eq(suppliers.archived, true));
+  }
+
+  async archiveSupplier(id: string): Promise<void> {
+    await db.update(suppliers).set({ archived: true }).where(eq(suppliers.id, id));
+  }
+
+  async restoreSupplier(id: string): Promise<void> {
+    await db.update(suppliers).set({ archived: false }).where(eq(suppliers.id, id));
+  }
+
+  async hardDeleteSupplier(id: string): Promise<void> {
+    // Delete all related payments
+    await db.delete(payments).where(and(eq(payments.type, "supplier"), eq(payments.entityId, id)));
+    // Update items to remove supplier reference
+    await db.update(items).set({ supplierId: null }).where(eq(items.supplierId, id));
+    // Update purchase invoices to remove supplier reference (but keep invoice)
+    await db.update(purchaseInvoices).set({ supplierId: "" }).where(eq(purchaseInvoices.supplierId, id));
+    // Delete the supplier
+    await db.delete(suppliers).where(eq(suppliers.id, id));
+  }
+
   async getPurchaseInvoices(): Promise<PurchaseInvoice[]> {
     return await db.select().from(purchaseInvoices).where(eq(purchaseInvoices.archived, false)).orderBy(desc(purchaseInvoices.date));
   }
@@ -241,6 +303,27 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deletePurchaseInvoice(id: string): Promise<void> {
+    await db.delete(purchaseInvoices).where(eq(purchaseInvoices.id, id));
+  }
+
+  async getArchivedPurchaseInvoices(): Promise<PurchaseInvoice[]> {
+    return await db.select().from(purchaseInvoices).where(eq(purchaseInvoices.archived, true)).orderBy(desc(purchaseInvoices.date));
+  }
+
+  async archivePurchaseInvoice(id: string): Promise<void> {
+    await db.update(purchaseInvoices).set({ archived: true }).where(eq(purchaseInvoices.id, id));
+  }
+
+  async restorePurchaseInvoice(id: string): Promise<void> {
+    await db.update(purchaseInvoices).set({ archived: false }).where(eq(purchaseInvoices.id, id));
+  }
+
+  async hardDeletePurchaseInvoice(id: string): Promise<void> {
+    // Delete purchase invoice items
+    await db.delete(purchaseInvoiceItems).where(eq(purchaseInvoiceItems.invoiceId, id));
+    // Archive related items (don't delete as they may have sales history)
+    await db.update(items).set({ archived: true, purchaseInvoiceId: null }).where(eq(items.purchaseInvoiceId, id));
+    // Delete the invoice
     await db.delete(purchaseInvoices).where(eq(purchaseInvoices.id, id));
   }
 
@@ -277,6 +360,27 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteSale(id: string): Promise<void> {
+    await db.delete(sales).where(eq(sales.id, id));
+  }
+
+  async getArchivedSales(): Promise<Sale[]> {
+    return await db.select().from(sales).where(eq(sales.archived, true)).orderBy(desc(sales.date));
+  }
+
+  async archiveSale(id: string): Promise<void> {
+    await db.update(sales).set({ archived: true }).where(eq(sales.id, id));
+  }
+
+  async restoreSale(id: string): Promise<void> {
+    await db.update(sales).set({ archived: false }).where(eq(sales.id, id));
+  }
+
+  async hardDeleteSale(id: string): Promise<void> {
+    // Delete sale items
+    await db.delete(saleItems).where(eq(saleItems.saleId, id));
+    // Update items to make them available again
+    await db.update(items).set({ status: "available", saleId: null, soldAt: null }).where(eq(items.saleId, id));
+    // Delete the sale
     await db.delete(sales).where(eq(sales.id, id));
   }
 
