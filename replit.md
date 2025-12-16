@@ -48,6 +48,27 @@ Preferred communication style: Simple, everyday language.
 - **Expenses**: Business expense tracking by category
 - **Currencies**: Multi-currency support with exchange rate management
 
+### Business Rules & Data Integrity
+
+#### Inventory Management
+- Inventory items are managed exclusively through purchase invoices - no direct add/edit/delete from inventory page
+- Each item tracks IMEI, status (available, sold, reserved, archived), and links back to purchase invoice
+
+#### Transaction Requirements
+- All sales and purchases require an open cash register session
+- Cash register must be opened before creating transactions
+
+#### Deletion Safeguards
+- **Purchase Invoice Delete**: 
+  - Blocked if any items from the purchase have been sold
+  - Blocked if supplier balance would go negative (indicating payments were made)
+  - Deletes associated inventory items and reverses supplier balance
+  
+- **Sale Delete**:
+  - Blocked if linked to a closed cash register session
+  - Blocked if customer balance would go negative (indicating payments were made)
+  - Returns items to "available" status and reverses customer balance
+
 ### Multi-Currency Support
 The system supports multiple currencies with exchange rate conversion:
 - **Currency Schema**: `currencies` table with code, name, symbol, exchangeRate (fixed-point 10000 = 1.0), decimals, isDefault
