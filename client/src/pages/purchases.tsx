@@ -462,7 +462,7 @@ export default function Purchases() {
 
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <FormLabel>Items</FormLabel>
+                  <span className="text-sm font-medium">Items</span>
                   <Button type="button" variant="outline" size="sm" onClick={addItemEntry}>
                     <Plus className="h-3 w-3 mr-1" />
                     Add Item

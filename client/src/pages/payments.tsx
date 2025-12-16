@@ -282,7 +282,7 @@ export default function Payments() {
                 name="type"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Payment Type</FormLabel>
+                    <span className="text-sm font-medium">Payment Type</span>
                     <div className="grid grid-cols-2 gap-2">
                       <Button
                         type="button"
