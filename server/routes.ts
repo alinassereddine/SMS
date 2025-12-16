@@ -240,6 +240,24 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/customers/:id/restore", requirePermission("customers:write"), async (req, res) => {
+    try {
+      await storage.restoreCustomer(req.params.id);
+      res.status(200).json({ message: "Customer restored" });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to restore customer" });
+    }
+  });
+
+  app.delete("/api/customers/:id/hard-delete", requirePermission("customers:delete"), async (req, res) => {
+    try {
+      await storage.hardDeleteCustomer(req.params.id);
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ error: "Failed to permanently delete customer" });
+    }
+  });
+
   // Customer summary with sales, payments, and balance ledger
   app.get("/api/customers/:id/summary", async (req, res) => {
     try {
@@ -398,6 +416,24 @@ export async function registerRoutes(
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ error: "Failed to delete supplier" });
+    }
+  });
+
+  app.post("/api/suppliers/:id/restore", requirePermission("suppliers:write"), async (req, res) => {
+    try {
+      await storage.restoreSupplier(req.params.id);
+      res.status(200).json({ message: "Supplier restored" });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to restore supplier" });
+    }
+  });
+
+  app.delete("/api/suppliers/:id/hard-delete", requirePermission("suppliers:delete"), async (req, res) => {
+    try {
+      await storage.hardDeleteSupplier(req.params.id);
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ error: "Failed to permanently delete supplier" });
     }
   });
 
@@ -722,6 +758,24 @@ export async function registerRoutes(
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ error: "Failed to delete sale" });
+    }
+  });
+
+  app.post("/api/sales/:id/restore", requirePermission("sales:write"), async (req, res) => {
+    try {
+      await storage.restoreSale(req.params.id);
+      res.status(200).json({ message: "Sale restored" });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to restore sale" });
+    }
+  });
+
+  app.delete("/api/sales/:id/hard-delete", requirePermission("sales:delete"), async (req, res) => {
+    try {
+      await storage.hardDeleteSale(req.params.id);
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ error: "Failed to permanently delete sale" });
     }
   });
 
@@ -1202,6 +1256,24 @@ export async function registerRoutes(
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ error: "Failed to delete purchase invoice" });
+    }
+  });
+
+  app.post("/api/purchase-invoices/:id/restore", requirePermission("purchases:write"), async (req, res) => {
+    try {
+      await storage.restorePurchaseInvoice(req.params.id);
+      res.status(200).json({ message: "Purchase invoice restored" });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to restore purchase invoice" });
+    }
+  });
+
+  app.delete("/api/purchase-invoices/:id/hard-delete", requirePermission("purchases:delete"), async (req, res) => {
+    try {
+      await storage.hardDeletePurchaseInvoice(req.params.id);
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ error: "Failed to permanently delete purchase invoice" });
     }
   });
 
@@ -1779,6 +1851,21 @@ export async function registerRoutes(
       res.json(setting);
     } catch (error) {
       res.status(500).json({ error: "Failed to save setting" });
+    }
+  });
+
+  // ============ ARCHIVED DATA ============
+  app.get("/api/archived", async (req, res) => {
+    try {
+      const [customers, suppliers, sales, purchases] = await Promise.all([
+        storage.getArchivedCustomers(),
+        storage.getArchivedSuppliers(),
+        storage.getArchivedSales(),
+        storage.getArchivedPurchaseInvoices(),
+      ]);
+      res.json({ customers, suppliers, sales, purchases });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch archived data" });
     }
   });
 
