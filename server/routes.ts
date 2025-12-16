@@ -1290,6 +1290,7 @@ export async function registerRoutes(
 
   // Update purchase invoice (notes and discount only)
   const updatePurchaseInvoiceSchema = z.object({
+    date: z.string().optional(),
     discountAmount: z.number().optional(),
     notes: z.string().nullable().optional(),
   });
@@ -1335,6 +1336,19 @@ export async function registerRoutes(
         updateData.totalAmount = newTotal;
         updateData.balanceImpact = newBalanceImpact;
         updateData.paymentType = newPaymentType;
+      }
+
+      // If date is being updated, cascade to all related inventory items
+      if (data.date) {
+        updateData.date = new Date(data.date);
+        const invoiceItems = await storage.getPurchaseInvoiceItems(req.params.id);
+        for (const invoiceItem of invoiceItems) {
+          if (invoiceItem.itemId) {
+            await storage.updateItem(invoiceItem.itemId, {
+              purchasedAt: new Date(data.date),
+            });
+          }
+        }
       }
 
       const updated = await storage.updatePurchaseInvoice(req.params.id, updateData);
@@ -1430,8 +1444,9 @@ export async function registerRoutes(
         }
       }
       
-      // 2. Update existing items' costs
+      // 2. Update existing items' costs and date if date changed
       const existingItems = data.items.filter(i => i.itemId);
+      const newPurchaseDate = data.date ? new Date(data.date) : invoice.date;
       for (const itemData of existingItems) {
         if (itemData.itemId) {
           const item = await storage.getItem(itemData.itemId);
@@ -1440,12 +1455,13 @@ export async function registerRoutes(
               purchasePrice: itemData.unitPrice,
               imei: itemData.imei,
               productId: itemData.productId,
+              purchasedAt: newPurchaseDate,
             });
           }
         }
       }
       
-      // 3. Create new inventory items
+      // 3. Create new inventory items with correct date
       const createdItems: { tempId: number; itemId: string }[] = [];
       for (let i = 0; i < newItems.length; i++) {
         const itemData = newItems[i];
@@ -1456,6 +1472,7 @@ export async function registerRoutes(
           status: "available",
           purchaseInvoiceId: invoice.id,
           supplierId: data.supplierId,
+          purchasedAt: newPurchaseDate,
         });
         createdItems.push({ tempId: i, itemId: newItem.id });
       }
