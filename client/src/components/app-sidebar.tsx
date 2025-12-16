@@ -28,6 +28,7 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/lib/auth";
 
 const mainNavItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
@@ -101,6 +102,20 @@ function NavGroup({ label, items }: NavGroupProps) {
 }
 
 export function AppSidebar() {
+  const { user, logout } = useAuth();
+  
+  const getInitials = (name: string) => {
+    return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+  };
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+    } catch (error) {
+      console.error('Logout failed:', error);
+    }
+  };
+
   return (
     <Sidebar>
       <SidebarHeader className="border-b border-sidebar-border px-6 py-4">
@@ -128,18 +143,19 @@ export function AppSidebar() {
         <div className="flex items-center gap-3">
           <Avatar className="h-9 w-9">
             <AvatarFallback className="bg-sidebar-accent text-sidebar-accent-foreground text-sm font-medium">
-              AD
+              {user ? getInitials(user.displayName) : "U"}
             </AvatarFallback>
           </Avatar>
           <div className="flex flex-col flex-1 min-w-0">
-            <span className="text-sm font-medium truncate">Admin User</span>
+            <span className="text-sm font-medium truncate">{user?.displayName || "User"}</span>
             <Badge variant="secondary" className="w-fit text-xs px-1.5 py-0">
-              Admin
+              {user?.role || "User"}
             </Badge>
           </div>
           <button 
             className="p-2 rounded-md text-muted-foreground hover-elevate active-elevate-2"
             data-testid="button-logout"
+            onClick={handleLogout}
           >
             <LogOut className="h-4 w-4" />
           </button>
