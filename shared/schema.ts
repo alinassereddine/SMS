@@ -279,6 +279,21 @@ export const updateSaleFullSchema = z.object({
 
 export type UpdateSaleFull = z.infer<typeof updateSaleFullSchema>;
 
+export const updatePurchaseInvoiceFullSchema = z.object({
+  supplierId: z.string().min(1, "Supplier is required"),
+  discountAmount: z.number().min(0).optional(),
+  paidAmount: z.number().min(0).optional(),
+  notes: z.string().nullable().optional(),
+  items: z.array(z.object({
+    itemId: z.string().optional(), // existing item id (for updates)
+    productId: z.string(),
+    imei: z.string().min(1, "IMEI is required"),
+    unitCost: z.number().min(0),
+  })).min(1, "Purchase must have at least one item"),
+});
+
+export type UpdatePurchaseInvoiceFull = z.infer<typeof updatePurchaseInvoiceFullSchema>;
+
 // Extended types for frontend
 export type ItemWithProduct = Item & { product: Product };
 export type SaleWithCustomer = Sale & { customer?: Customer; items: (SaleItem & { product: Product })[] };

@@ -16,6 +16,7 @@ import {
   insertExpenseSchema,
   insertCurrencySchema,
   updateSaleFullSchema,
+  updatePurchaseInvoiceFullSchema,
 } from "@shared/schema";
 import { z } from "zod";
 
@@ -1259,6 +1260,200 @@ export async function registerRoutes(
       if (error instanceof z.ZodError) {
         return res.status(400).json({ error: error.errors });
       }
+      res.status(500).json({ error: "Failed to update purchase invoice" });
+    }
+  });
+
+  // Comprehensive purchase invoice edit (supplier, items, prices, paid amount)
+  app.put("/api/purchase-invoices/:id", requirePermission("purchases:write"), async (req, res) => {
+    try {
+      const invoice = await storage.getPurchaseInvoice(req.params.id);
+      if (!invoice) return res.status(404).json({ error: "Purchase invoice not found" });
+
+      const data = updatePurchaseInvoiceFullSchema.parse(req.body);
+      
+      // Get current invoice items
+      const currentInvoiceItems = await storage.getPurchaseInvoiceItems(invoice.id);
+      const currentItemIds = new Set(currentInvoiceItems.map(ii => ii.itemId).filter(Boolean));
+      const newItemIds = new Set(data.items.filter(i => i.itemId).map(i => i.itemId));
+      
+      // Items to remove (existing items not in new list)
+      const itemsToRemove = currentInvoiceItems.filter(ii => ii.itemId && !newItemIds.has(ii.itemId));
+      
+      // Check if any items to be removed have been sold
+      for (const invoiceItem of itemsToRemove) {
+        if (invoiceItem.itemId) {
+          const item = await storage.getItem(invoiceItem.itemId);
+          if (item && item.status === "sold") {
+            return res.status(400).json({
+              error: `Cannot remove item with IMEI ${item.imei}: it has already been sold`
+            });
+          }
+        }
+      }
+      
+      // Check for duplicate IMEIs in the new items
+      const imeis = data.items.map(i => i.imei);
+      const uniqueImeis = new Set(imeis);
+      if (imeis.length !== uniqueImeis.size) {
+        return res.status(400).json({ error: "Duplicate IMEIs are not allowed" });
+      }
+      
+      // Check IMEI uniqueness for new items (items without itemId)
+      const newItems = data.items.filter(i => !i.itemId);
+      for (const newItem of newItems) {
+        const existingItem = await storage.getItemByImei(newItem.imei);
+        if (existingItem) {
+          return res.status(400).json({
+            error: `IMEI ${newItem.imei} already exists in inventory`
+          });
+        }
+      }
+      
+      // Calculate new totals
+      const discountAmount = data.discountAmount ?? invoice.discountAmount ?? 0;
+      const newSubtotal = data.items.reduce((sum, i) => sum + i.unitCost, 0);
+      
+      if (discountAmount > newSubtotal) {
+        return res.status(400).json({ error: "Discount cannot exceed subtotal" });
+      }
+      
+      const newTotal = newSubtotal - discountAmount;
+      const newPaidAmount = data.paidAmount ?? invoice.paidAmount ?? 0;
+      
+      if (newPaidAmount > newTotal) {
+        return res.status(400).json({ error: "Paid amount cannot exceed total" });
+      }
+      
+      const newBalanceImpact = Math.max(0, newTotal - newPaidAmount);
+      
+      // Determine payment type
+      let newPaymentType = "credit";
+      if (newPaidAmount >= newTotal) {
+        newPaymentType = "full";
+      } else if (newPaidAmount > 0) {
+        newPaymentType = "partial";
+      }
+      
+      // ---- Begin updates ----
+      
+      // 1. Delete removed items from inventory
+      for (const invoiceItem of itemsToRemove) {
+        if (invoiceItem.itemId) {
+          const item = await storage.getItem(invoiceItem.itemId);
+          if (item && !item.archived && item.status !== "sold") {
+            await storage.deleteItem(invoiceItem.itemId);
+          }
+        }
+      }
+      
+      // 2. Update existing items' costs
+      const existingItems = data.items.filter(i => i.itemId);
+      for (const itemData of existingItems) {
+        if (itemData.itemId) {
+          const item = await storage.getItem(itemData.itemId);
+          if (item) {
+            await storage.updateItem(itemData.itemId, {
+              purchasePrice: itemData.unitCost,
+              imei: itemData.imei,
+              productId: itemData.productId,
+            });
+          }
+        }
+      }
+      
+      // 3. Create new inventory items
+      const createdItems: { tempId: number; itemId: string }[] = [];
+      for (let i = 0; i < newItems.length; i++) {
+        const itemData = newItems[i];
+        const newItem = await storage.createItem({
+          productId: itemData.productId,
+          imei: itemData.imei,
+          purchasePrice: itemData.unitCost,
+          status: "available",
+          purchaseInvoiceId: invoice.id,
+          supplierId: data.supplierId,
+        });
+        createdItems.push({ tempId: i, itemId: newItem.id });
+      }
+      
+      // 4. Delete old invoice items and create new ones
+      await storage.deletePurchaseInvoiceItems(invoice.id);
+      
+      for (const itemData of data.items) {
+        let itemId = itemData.itemId;
+        if (!itemId) {
+          // Find the created item by matching imei
+          const createdItem = await storage.getItemByImei(itemData.imei);
+          itemId = createdItem?.id;
+        }
+        
+        if (itemId) {
+          await storage.createPurchaseInvoiceItem({
+            invoiceId: invoice.id,
+            productId: itemData.productId,
+            itemId: itemId,
+            quantity: 1,
+            unitCost: itemData.unitCost,
+            totalCost: itemData.unitCost,
+          });
+        }
+      }
+      
+      // 5. Update supplier balances
+      const oldSupplierId = invoice.supplierId;
+      const newSupplierId = data.supplierId;
+      
+      // Remove balance from old supplier
+      if (invoice.balanceImpact > 0) {
+        const oldSupplier = await storage.getSupplier(oldSupplierId);
+        if (oldSupplier) {
+          await storage.updateSupplier(oldSupplierId, {
+            balance: Math.max(0, (oldSupplier.balance || 0) - invoice.balanceImpact),
+          });
+        }
+      }
+      
+      // Add balance to new supplier
+      if (newBalanceImpact > 0) {
+        const newSupplier = await storage.getSupplier(newSupplierId);
+        if (newSupplier) {
+          await storage.updateSupplier(newSupplierId, {
+            balance: (newSupplier.balance || 0) + newBalanceImpact,
+          });
+        }
+      }
+      
+      // 6. Update items with new supplier if changed
+      if (oldSupplierId !== newSupplierId) {
+        for (const itemData of data.items) {
+          const itemId = itemData.itemId || (await storage.getItemByImei(itemData.imei))?.id;
+          if (itemId) {
+            await storage.updateItem(itemId, { supplierId: newSupplierId });
+          }
+        }
+      }
+      
+      // 7. Update invoice record
+      const updatedInvoice = await storage.updatePurchaseInvoice(invoice.id, {
+        supplierId: newSupplierId,
+        subtotal: newSubtotal,
+        discountAmount: discountAmount,
+        totalAmount: newTotal,
+        paidAmount: newPaidAmount,
+        balanceImpact: newBalanceImpact,
+        paymentType: newPaymentType,
+        notes: data.notes !== undefined ? data.notes : invoice.notes,
+      });
+      
+      // Return updated invoice with items
+      const newInvoiceItems = await storage.getPurchaseInvoiceItems(invoice.id);
+      res.json({ ...updatedInvoice, items: newInvoiceItems });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error("Failed to update purchase invoice:", error);
       res.status(500).json({ error: "Failed to update purchase invoice" });
     }
   });
