@@ -16,6 +16,7 @@ import Products from "@/pages/products";
 import Customers from "@/pages/customers";
 import CustomerDetails from "@/pages/customer-details";
 import Suppliers from "@/pages/suppliers";
+import SupplierDetails from "@/pages/supplier-details";
 import Inventory from "@/pages/inventory";
 import Sales from "@/pages/sales";
 import POS from "@/pages/pos";
@@ -35,6 +36,7 @@ function Router() {
       <Route path="/customers" component={Customers} />
       <Route path="/customers/:id" component={CustomerDetails} />
       <Route path="/suppliers" component={Suppliers} />
+      <Route path="/suppliers/:id" component={SupplierDetails} />
       <Route path="/inventory" component={Inventory} />
       <Route path="/sales" component={Sales} />
       <Route path="/pos" component={POS} />

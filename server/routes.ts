@@ -400,6 +400,112 @@ export async function registerRoutes(
     }
   });
 
+  // Supplier summary with purchases, payments, and balance ledger
+  app.get("/api/suppliers/:id/summary", async (req, res) => {
+    try {
+      const supplier = await storage.getSupplier(req.params.id);
+      if (!supplier) return res.status(404).json({ error: "Supplier not found" });
+
+      // Get all purchases for this supplier
+      const allPurchases = await storage.getPurchaseInvoices();
+      const supplierPurchases = allPurchases
+        .filter(p => p.supplierId === req.params.id)
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+      // Get purchase items for each purchase
+      const allItems = await storage.getItems();
+      const allProducts = await storage.getProducts();
+      
+      const purchasesWithItems = await Promise.all(supplierPurchases.map(async (purchase) => {
+        const purchaseItems = await storage.getPurchaseInvoiceItems(purchase.id);
+        const items = purchaseItems.map(pi => {
+          const item = allItems.find(i => i.id === pi.itemId);
+          const product = item ? allProducts.find(p => p.id === item.productId) : null;
+          return {
+            ...pi,
+            imei: item?.imei || "",
+            product: product || null,
+          };
+        });
+        return { ...purchase, items, itemCount: items.length };
+      }));
+
+      // Get all payments for this supplier
+      const payments = await storage.getPaymentsByEntity("supplier", req.params.id);
+      const sortedPayments = payments.sort((a, b) => 
+        new Date(b.date).getTime() - new Date(a.date).getTime()
+      );
+
+      // Build balance ledger (chronological transactions)
+      type LedgerEntry = {
+        id: string;
+        date: string;
+        type: "purchase" | "payment";
+        description: string;
+        debit: number;  // increases balance (what we owe supplier)
+        credit: number; // decreases balance (what we paid)
+        runningBalance: number;
+        referenceId: string;
+      };
+
+      const ledgerEntries: Omit<LedgerEntry, "runningBalance">[] = [];
+
+      // Add purchases as debits (we owe the unpaid portion)
+      for (const purchase of supplierPurchases) {
+        const unpaidAmount = purchase.totalAmount - (purchase.paidAmount || 0);
+        if (unpaidAmount > 0) {
+          ledgerEntries.push({
+            id: `purchase-${purchase.id}`,
+            date: String(purchase.date),
+            type: "purchase",
+            description: `Purchase ${purchase.invoiceNumber}`,
+            debit: unpaidAmount,
+            credit: 0,
+            referenceId: purchase.id,
+          });
+        }
+      }
+
+      // Add payments as credits (reduces what we owe)
+      for (const payment of payments) {
+        ledgerEntries.push({
+          id: `payment-${payment.id}`,
+          date: String(payment.date),
+          type: "payment",
+          description: `Payment - ${payment.paymentMethod}${payment.reference ? ` (${payment.reference})` : ""}`,
+          debit: 0,
+          credit: payment.amount,
+          referenceId: payment.id,
+        });
+      }
+
+      // Sort by date ascending for running balance calculation
+      ledgerEntries.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+      // Calculate running balance
+      let runningBalance = 0;
+      const ledger: LedgerEntry[] = ledgerEntries.map(entry => {
+        runningBalance += entry.debit - entry.credit;
+        return { ...entry, runningBalance };
+      });
+
+      // Reverse for display (most recent first)
+      ledger.reverse();
+
+      res.json({
+        supplier,
+        purchases: purchasesWithItems,
+        payments: sortedPayments,
+        ledger,
+        totalPurchases: supplierPurchases.length,
+        totalPayments: payments.length,
+      });
+    } catch (error) {
+      console.error("Error fetching supplier summary:", error);
+      res.status(500).json({ error: "Failed to fetch supplier summary" });
+    }
+  });
+
   // ============ SALES ============
   app.get("/api/sales", async (req, res) => {
     try {

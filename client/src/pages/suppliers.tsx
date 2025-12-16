@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Truck, MoreHorizontal, Pencil, Trash2, Phone } from "lucide-react";
+import { Plus, Truck, MoreHorizontal, Pencil, Trash2, Phone, Eye } from "lucide-react";
+import { Link } from "wouter";
 import { PageHeader } from "@/components/page-header";
 import { DataTable, Column } from "@/components/data-table";
 import { SearchInput } from "@/components/search-input";
@@ -221,6 +222,12 @@ export default function Suppliers() {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
+            <DropdownMenuItem asChild>
+              <Link href={`/suppliers/${supplier.id}`}>
+                <Eye className="h-4 w-4 mr-2" />
+                View Details
+              </Link>
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={() => handleOpenDialog(supplier)}>
               <Pencil className="h-4 w-4 mr-2" />
               Edit
