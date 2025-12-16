@@ -312,6 +312,7 @@ export default function SupplierDetails() {
                     <TableHeader>
                       <TableRow>
                         <TableHead>Date</TableHead>
+                        <TableHead>Type</TableHead>
                         <TableHead>Method</TableHead>
                         <TableHead>Reference</TableHead>
                         <TableHead className="text-right">Amount</TableHead>
@@ -319,23 +320,35 @@ export default function SupplierDetails() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {payments.map((payment) => (
-                        <TableRow key={payment.id} data-testid={`row-payment-${payment.id}`}>
-                          <TableCell>{formatDate(payment.date)}</TableCell>
-                          <TableCell>
-                            <Badge variant="outline">{payment.paymentMethod}</Badge>
-                          </TableCell>
-                          <TableCell className="font-mono text-sm">
-                            {payment.reference || "-"}
-                          </TableCell>
-                          <TableCell className="text-right font-mono text-emerald-600">
-                            +{formatCurrency(payment.amount)}
-                          </TableCell>
-                          <TableCell className="text-muted-foreground text-sm max-w-[200px] truncate">
-                            {payment.notes || "-"}
-                          </TableCell>
-                        </TableRow>
-                      ))}
+                      {payments.map((payment) => {
+                        const isRefund = payment.transactionType === "refund";
+                        return (
+                          <TableRow key={payment.id} data-testid={`row-payment-${payment.id}`}>
+                            <TableCell>{formatDate(payment.date)}</TableCell>
+                            <TableCell>
+                              <Badge variant={isRefund ? "destructive" : "default"}>
+                                {isRefund ? "Refund" : "Payment"}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="outline">{payment.paymentMethod}</Badge>
+                            </TableCell>
+                            <TableCell className="font-mono text-sm">
+                              {payment.reference || "-"}
+                            </TableCell>
+                            <TableCell className={`text-right font-mono ${
+                              isRefund 
+                                ? "text-emerald-600 dark:text-emerald-400" 
+                                : "text-red-600 dark:text-red-400"
+                            }`}>
+                              {isRefund ? "+" : "-"}{formatCurrency(payment.amount)}
+                            </TableCell>
+                            <TableCell className="text-muted-foreground text-sm max-w-[200px] truncate">
+                              {payment.notes || "-"}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
                     </TableBody>
                   </Table>
                 </ScrollArea>

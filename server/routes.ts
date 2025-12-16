@@ -1595,9 +1595,22 @@ export async function registerRoutes(
         .filter(s => s.paymentMethod === "cash")
         .reduce((sum, s) => sum + (s.paidAmount ?? 0), 0);
       
+      // Calculate payment cash flow correctly based on type and transaction type
+      // Customer payment = money IN (+), Customer refund = money OUT (-)
+      // Supplier payment = money OUT (-), Supplier refund = money IN (+)
       const paymentsCash = sessionPayments
         .filter(p => p.paymentMethod === "cash")
-        .reduce((sum, p) => sum + p.amount, 0);
+        .reduce((sum, p) => {
+          const isRefund = p.transactionType === "refund";
+          const isCustomer = p.type === "customer";
+          // Customer payment = +, Customer refund = -
+          // Supplier payment = -, Supplier refund = +
+          if (isCustomer) {
+            return sum + (isRefund ? -p.amount : p.amount);
+          } else {
+            return sum + (isRefund ? p.amount : -p.amount);
+          }
+        }, 0);
       
       const expensesCash = sessionExpenses
         .filter(e => e.paymentMethod === "cash")
