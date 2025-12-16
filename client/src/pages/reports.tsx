@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { PageHeader } from "@/components/page-header";
 import { MetricCard } from "@/components/metric-card";
+import { ExportButton } from "@/components/export-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -165,31 +166,66 @@ export default function Reports() {
   const { startDate, endDate } = useMemo(() => getDateRange(datePreset), [datePreset]);
 
   const { data: summary, isLoading: summaryLoading } = useQuery<ReportSummary>({
-    queryKey: ["/api/reports/summary", { startDate, endDate }],
+    queryKey: ["/api/reports/summary", startDate, endDate],
+    queryFn: async () => {
+      const res = await fetch(`/api/reports/summary?startDate=${startDate}&endDate=${endDate}`);
+      if (!res.ok) throw new Error("Failed to fetch summary");
+      return res.json();
+    },
   });
 
   const { data: salesTrends = [], isLoading: trendsLoading } = useQuery<SalesTrendData[]>({
-    queryKey: ["/api/reports/sales-trends", { startDate, endDate, groupBy }],
+    queryKey: ["/api/reports/sales-trends", startDate, endDate, groupBy],
+    queryFn: async () => {
+      const res = await fetch(`/api/reports/sales-trends?startDate=${startDate}&endDate=${endDate}&groupBy=${groupBy}`);
+      if (!res.ok) throw new Error("Failed to fetch sales trends");
+      return res.json();
+    },
   });
 
   const { data: topProducts = [] } = useQuery<TopProduct[]>({
-    queryKey: ["/api/reports/top-products", { startDate, endDate, limit: "5" }],
+    queryKey: ["/api/reports/top-products", startDate, endDate],
+    queryFn: async () => {
+      const res = await fetch(`/api/reports/top-products?startDate=${startDate}&endDate=${endDate}&limit=5`);
+      if (!res.ok) throw new Error("Failed to fetch top products");
+      return res.json();
+    },
   });
 
   const { data: topCustomers = [] } = useQuery<TopCustomer[]>({
-    queryKey: ["/api/reports/top-customers", { startDate, endDate, limit: "5" }],
+    queryKey: ["/api/reports/top-customers", startDate, endDate],
+    queryFn: async () => {
+      const res = await fetch(`/api/reports/top-customers?startDate=${startDate}&endDate=${endDate}&limit=5`);
+      if (!res.ok) throw new Error("Failed to fetch top customers");
+      return res.json();
+    },
   });
 
   const { data: supplierAnalysis = [] } = useQuery<SupplierStats[]>({
-    queryKey: ["/api/reports/supplier-analysis", { startDate, endDate }],
+    queryKey: ["/api/reports/supplier-analysis", startDate, endDate],
+    queryFn: async () => {
+      const res = await fetch(`/api/reports/supplier-analysis?startDate=${startDate}&endDate=${endDate}`);
+      if (!res.ok) throw new Error("Failed to fetch supplier analysis");
+      return res.json();
+    },
   });
 
   const { data: paymentTrends = [] } = useQuery<PaymentTrend[]>({
-    queryKey: ["/api/reports/payment-trends", { startDate, endDate }],
+    queryKey: ["/api/reports/payment-trends", startDate, endDate],
+    queryFn: async () => {
+      const res = await fetch(`/api/reports/payment-trends?startDate=${startDate}&endDate=${endDate}`);
+      if (!res.ok) throw new Error("Failed to fetch payment trends");
+      return res.json();
+    },
   });
 
   const { data: expensesByCategory = [] } = useQuery<ExpenseCategory[]>({
-    queryKey: ["/api/reports/expenses-by-category", { startDate, endDate }],
+    queryKey: ["/api/reports/expenses-by-category", startDate, endDate],
+    queryFn: async () => {
+      const res = await fetch(`/api/reports/expenses-by-category?startDate=${startDate}&endDate=${endDate}`);
+      if (!res.ok) throw new Error("Failed to fetch expenses by category");
+      return res.json();
+    },
   });
 
   const defaultSummary: ReportSummary = {
@@ -228,6 +264,31 @@ export default function Reports() {
               ))}
             </SelectContent>
           </Select>
+          <ExportButton
+            data={[
+              { metric: "Total Revenue", value: (displaySummary.totalRevenue / 100).toFixed(2) },
+              { metric: "Total Profit", value: (displaySummary.totalProfit / 100).toFixed(2) },
+              { metric: "Total Purchases", value: (displaySummary.totalPurchases / 100).toFixed(2) },
+              { metric: "Total Expenses", value: (displaySummary.totalExpenses / 100).toFixed(2) },
+              { metric: "Customer Payments", value: (displaySummary.customerPayments / 100).toFixed(2) },
+              { metric: "Supplier Payments", value: (displaySummary.supplierPayments / 100).toFixed(2) },
+              { metric: "Net Cash Flow", value: (displaySummary.netCashFlow / 100).toFixed(2) },
+              { metric: "Sales Count", value: String(displaySummary.salesCount) },
+              { metric: "Purchase Count", value: String(displaySummary.purchaseCount) },
+              { metric: "Profit Margin", value: `${displaySummary.profitMargin}%` },
+              { metric: "", value: "" },
+              { metric: "Date Range", value: `${startDate} to ${endDate}` },
+              ...salesTrends.map(t => ({
+                metric: `Sales (${t.label})`,
+                value: `Revenue: ${(t.revenue / 100).toFixed(2)}, Profit: ${(t.profit / 100).toFixed(2)}, Count: ${t.count}`,
+              })),
+            ]}
+            filename={`report_${startDate}_to_${endDate}`}
+            columns={[
+              { key: "metric", header: "Metric" },
+              { key: "value", header: "Value" },
+            ]}
+          />
         </div>
       </PageHeader>
 
