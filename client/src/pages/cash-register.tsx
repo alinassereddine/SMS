@@ -85,9 +85,36 @@ function exportSessionToCSV(session: CashRegisterSession) {
   URL.revokeObjectURL(url);
 }
 
+type DatePreset = 'today' | 'week' | 'month' | 'year' | 'all';
+
+function getDateRange(preset: DatePreset): { from: Date | null; to: Date } {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  
+  switch (preset) {
+    case 'today':
+      return { from: today, to: now };
+    case 'week':
+      const weekStart = new Date(today);
+      weekStart.setDate(today.getDate() - 7);
+      return { from: weekStart, to: now };
+    case 'month':
+      const monthStart = new Date(today);
+      monthStart.setMonth(today.getMonth() - 1);
+      return { from: monthStart, to: now };
+    case 'year':
+      const yearStart = new Date(today);
+      yearStart.setFullYear(today.getFullYear() - 1);
+      return { from: yearStart, to: now };
+    case 'all':
+    default:
+      return { from: null, to: now };
+  }
+}
+
 interface SessionTransaction {
   id: string;
-  type: 'sale' | 'payment' | 'expense' | 'opening' | 'manual_inflow' | 'manual_outflow';
+  type: 'sale' | 'payment' | 'supplier_payment' | 'expense' | 'opening';
   description: string;
   amount: number;
   cashAmount: number;
@@ -112,7 +139,7 @@ interface ActiveSessionWithDetails extends CashRegisterSession {
   };
 }
 
-type CategoryFilter = "all" | "sale" | "payment" | "expense" | "opening" | "manual_inflow" | "manual_outflow";
+type CategoryFilter = "all" | "sale" | "payment" | "supplier_payment" | "expense" | "opening";
 
 export default function CashRegister() {
   const [isOpenDialogOpen, setIsOpenDialogOpen] = useState(false);
@@ -124,6 +151,7 @@ export default function CashRegister() {
   const [editSession, setEditSession] = useState<CashRegisterSession | null>(null);
   const [editDate, setEditDate] = useState<string>("");
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
+  const [datePreset, setDatePreset] = useState<DatePreset>("all");
   const { toast } = useToast();
 
   const { data: sessions = [], isLoading } = useQuery<CashRegisterSession[]>({
@@ -317,9 +345,8 @@ export default function CashRegister() {
       case 'opening': return 'Opening Balance';
       case 'sale': return 'Sale';
       case 'payment': return 'Customer Payment';
+      case 'supplier_payment': return 'Supplier Payment';
       case 'expense': return 'Expense';
-      case 'manual_inflow': return 'Manual Inflow';
-      case 'manual_outflow': return 'Manual Outflow';
       default: return type;
     }
   };
@@ -341,9 +368,25 @@ export default function CashRegister() {
     ? [openingTransaction, ...allTransactions]
     : [];
 
-  const filteredTransactions = categoryFilter === "all"
-    ? transactionsWithOpening
-    : transactionsWithOpening.filter(tx => tx.type === categoryFilter);
+  const { from: dateFrom } = getDateRange(datePreset);
+  
+  const filteredTransactions = transactionsWithOpening.filter(tx => {
+    // Category filter
+    if (categoryFilter !== "all" && tx.type !== categoryFilter) {
+      return false;
+    }
+    // Date filter (opening transaction always included for balance calculation)
+    if (tx.type === 'opening') {
+      return true;
+    }
+    if (dateFrom) {
+      const txDate = new Date(tx.date);
+      if (txDate < dateFrom) {
+        return false;
+      }
+    }
+    return true;
+  });
 
   let runningBalance = activeSession?.openingBalance || 0;
   const transactionsWithBalance = filteredTransactions.map((tx) => {
@@ -444,6 +487,18 @@ export default function CashRegister() {
             <div className="flex flex-wrap items-center justify-between gap-4">
               <h2 className="text-xl font-semibold">Transactions</h2>
               <div className="flex flex-wrap items-center gap-2">
+                <Select value={datePreset} onValueChange={(v) => setDatePreset(v as DatePreset)}>
+                  <SelectTrigger className="w-36" data-testid="select-date-filter">
+                    <SelectValue placeholder="All Time" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Time</SelectItem>
+                    <SelectItem value="today">Today</SelectItem>
+                    <SelectItem value="week">This Week</SelectItem>
+                    <SelectItem value="month">This Month</SelectItem>
+                    <SelectItem value="year">This Year</SelectItem>
+                  </SelectContent>
+                </Select>
                 <Select value={categoryFilter} onValueChange={(v) => setCategoryFilter(v as CategoryFilter)}>
                   <SelectTrigger className="w-44" data-testid="select-category-filter">
                     <SelectValue placeholder="All Categories" />
@@ -453,9 +508,8 @@ export default function CashRegister() {
                     <SelectItem value="opening">Opening Balance</SelectItem>
                     <SelectItem value="sale">Sales</SelectItem>
                     <SelectItem value="payment">Customer Payments</SelectItem>
+                    <SelectItem value="supplier_payment">Supplier Payments</SelectItem>
                     <SelectItem value="expense">Expenses</SelectItem>
-                    <SelectItem value="manual_inflow">Manual Inflows</SelectItem>
-                    <SelectItem value="manual_outflow">Manual Outflows</SelectItem>
                   </SelectContent>
                 </Select>
                 <Button variant="outline" size="icon" onClick={() => exportSessionToCSV(activeSession)} data-testid="button-export-current">
