@@ -46,6 +46,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils";
+import { useAuth } from "@/lib/auth";
 import type { Expense } from "@shared/schema";
 
 const expenseFormSchema = z.object({
@@ -127,6 +128,8 @@ export default function Expenses() {
   const [editDate, setEditDate] = useState("");
   const [datePreset, setDatePreset] = useState<DatePreset>("month");
   const { toast } = useToast();
+  const { can } = useAuth();
+  const canDelete = can("expenses:delete");
 
   const { data: expenses = [], isLoading } = useQuery<Expense[]>({
     queryKey: ["/api/expenses"],
@@ -295,13 +298,15 @@ export default function Expenses() {
               <Pencil className="h-4 w-4 mr-2" />
               Edit Date
             </DropdownMenuItem>
-            <DropdownMenuItem 
-              onClick={() => deleteMutation.mutate(expense.id)}
-              className="text-destructive"
-            >
-              <Trash2 className="h-4 w-4 mr-2" />
-              Delete
-            </DropdownMenuItem>
+            {canDelete && (
+              <DropdownMenuItem 
+                onClick={() => deleteMutation.mutate(expense.id)}
+                className="text-destructive"
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Delete
+              </DropdownMenuItem>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       ),

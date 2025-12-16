@@ -37,6 +37,7 @@ import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { CurrencyInput } from "@/components/currency-input";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils";
+import { useAuth } from "@/lib/auth";
 import type { Sale, SaleWithCustomer, Item, Product, Customer } from "@shared/schema";
 import { Link } from "wouter";
 
@@ -53,6 +54,8 @@ export default function Sales() {
   const [paymentFilter, setPaymentFilter] = useState<string>("all");
   const [selectedSale, setSelectedSale] = useState<SaleWithCustomer | null>(null);
   const [deleteConfirmSale, setDeleteConfirmSale] = useState<SaleWithCustomer | null>(null);
+  const { can } = useAuth();
+  const canDelete = can("sales:delete");
   const [editSale, setEditSale] = useState<SaleWithCustomer | null>(null);
   const [editItems, setEditItems] = useState<EditItem[]>([]);
   const [editCustomerId, setEditCustomerId] = useState<string | null>(null);
@@ -291,13 +294,15 @@ export default function Sales() {
               <Printer className="h-4 w-4 mr-2" />
               Print Receipt
             </DropdownMenuItem>
-            <DropdownMenuItem 
-              onClick={() => setDeleteConfirmSale(sale)}
-              className="text-destructive"
-            >
-              <Trash2 className="h-4 w-4 mr-2" />
-              Delete
-            </DropdownMenuItem>
+            {canDelete && (
+              <DropdownMenuItem 
+                onClick={() => setDeleteConfirmSale(sale)}
+                className="text-destructive"
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Delete
+              </DropdownMenuItem>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       ),
