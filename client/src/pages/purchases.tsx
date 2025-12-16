@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Plus, FileText, MoreHorizontal, Eye, Printer, Trash2, Package, AlertTriangle, Pencil, X, Search } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
+import { ExportButton } from "@/components/export-button";
 import { DataTable, Column } from "@/components/data-table";
 import { SearchInput } from "@/components/search-input";
 import { StatusBadge } from "@/components/status-badge";
@@ -381,10 +382,26 @@ export default function Purchases() {
   return (
     <div className="space-y-6">
       <PageHeader title="Purchase Invoices" description="Manage supplier purchases">
-        <Button onClick={() => setIsDialogOpen(true)} data-testid="button-add-purchase">
-          <Plus className="h-4 w-4 mr-2" />
-          New Purchase
-        </Button>
+        <div className="flex items-center gap-2">
+          <ExportButton
+            data={filteredInvoices}
+            filename="purchases"
+            columns={[
+              { key: "invoiceNumber", header: "Invoice #" },
+              { key: "supplier", header: "Supplier", format: (_, row) => row.supplier?.name || "" },
+              { key: "date", header: "Date", format: (v) => v ? new Date(v).toLocaleDateString() : "" },
+              { key: "totalAmount", header: "Total", format: (v) => (v / 100).toFixed(2) },
+              { key: "paidAmount", header: "Paid", format: (v) => (v / 100).toFixed(2) },
+              { key: "balanceImpact", header: "Balance", format: (v) => (v / 100).toFixed(2) },
+              { key: "paymentType", header: "Payment Type" },
+              { key: "notes", header: "Notes" },
+            ]}
+          />
+          <Button onClick={() => setIsDialogOpen(true)} data-testid="button-add-purchase">
+            <Plus className="h-4 w-4 mr-2" />
+            New Purchase
+          </Button>
+        </div>
       </PageHeader>
 
       <div className="grid gap-4 md:grid-cols-3">

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Plus, Wallet, MoreHorizontal, Eye, User, Truck, Pencil } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
+import { ExportButton } from "@/components/export-button";
 import { DataTable, Column } from "@/components/data-table";
 import { SearchInput } from "@/components/search-input";
 import { Button } from "@/components/ui/button";
@@ -276,10 +277,26 @@ export default function Payments() {
   return (
     <div className="space-y-6">
       <PageHeader title="Payments" description="Track customer and supplier payments">
-        <Button onClick={() => setIsDialogOpen(true)} data-testid="button-add-payment">
-          <Plus className="h-4 w-4 mr-2" />
-          Record Payment
-        </Button>
+        <div className="flex items-center gap-2">
+          <ExportButton
+            data={filteredPayments}
+            filename="payments"
+            columns={[
+              { key: "date", header: "Date", format: (v) => v ? new Date(v).toLocaleDateString() : "" },
+              { key: "type", header: "Type", format: (v) => v === "customer" ? "Customer" : "Supplier" },
+              { key: "entity", header: "Name", format: (_, row) => row.entity?.name || "" },
+              { key: "transactionType", header: "Transaction Type", format: (v) => v === "refund" ? "Refund" : "Payment" },
+              { key: "amount", header: "Amount", format: (v) => (v / 100).toFixed(2) },
+              { key: "paymentMethod", header: "Method" },
+              { key: "reference", header: "Reference" },
+              { key: "notes", header: "Notes" },
+            ]}
+          />
+          <Button onClick={() => setIsDialogOpen(true)} data-testid="button-add-payment">
+            <Plus className="h-4 w-4 mr-2" />
+            Record Payment
+          </Button>
+        </div>
       </PageHeader>
 
       <div className="grid gap-4 md:grid-cols-3">

@@ -15,7 +15,8 @@ import {
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { ArrowLeft, User, Phone, Mail, MapPin, ShoppingCart, CreditCard, Receipt, ChevronDown, ChevronRight } from "lucide-react";
+import { ArrowLeft, User, Phone, Mail, MapPin, ShoppingCart, CreditCard, Receipt, ChevronDown, ChevronRight, Download } from "lucide-react";
+import { ExportButton } from "@/components/export-button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import type { Customer, Sale, Payment, Product } from "@shared/schema";
@@ -123,12 +124,26 @@ export default function CustomerDetails() {
             <p className="text-sm text-muted-foreground">Customer Details</p>
           </div>
         </div>
-        <Badge 
-          variant={(customer.balance || 0) > 0 ? "destructive" : "secondary"}
-          className="text-base px-3 py-1"
-        >
-          Balance: {formatCurrency(customer.balance || 0)}
-        </Badge>
+        <div className="flex items-center gap-3">
+          <ExportButton
+            data={ledger}
+            filename={`customer_${customer.name.replace(/\s+/g, '_')}_ledger`}
+            columns={[
+              { key: "date", header: "Date", format: (v) => v ? new Date(v).toLocaleDateString() : "" },
+              { key: "type", header: "Type" },
+              { key: "description", header: "Description" },
+              { key: "debit", header: "Debit", format: (v) => v > 0 ? (v / 100).toFixed(2) : "" },
+              { key: "credit", header: "Credit", format: (v) => v > 0 ? (v / 100).toFixed(2) : "" },
+              { key: "runningBalance", header: "Balance", format: (v) => (v / 100).toFixed(2) },
+            ]}
+          />
+          <Badge 
+            variant={(customer.balance || 0) > 0 ? "destructive" : "secondary"}
+            className="text-base px-3 py-1"
+          >
+            Balance: {formatCurrency(customer.balance || 0)}
+          </Badge>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">

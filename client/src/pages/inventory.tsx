@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Barcode } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
+import { ExportButton } from "@/components/export-button";
 import { DataTable, Column } from "@/components/data-table";
 import { SearchInput } from "@/components/search-input";
 import { StatusBadge } from "@/components/status-badge";
@@ -85,7 +86,19 @@ export default function Inventory() {
       <PageHeader 
         title="Inventory" 
         description={`${availableCount} available, ${soldCount} sold. Items are managed through Purchases and Sales.`}
-      />
+      >
+        <ExportButton
+          data={filteredItems}
+          filename="inventory"
+          columns={[
+            { key: "imei", header: "IMEI" },
+            { key: "product", header: "Product", format: (_, row) => row.product?.name || "" },
+            { key: "purchasePrice", header: "Cost", format: (v) => (v / 100).toFixed(2) },
+            { key: "status", header: "Status" },
+            { key: "purchasedAt", header: "Added", format: (v) => v ? new Date(v).toLocaleDateString() : "" },
+          ]}
+        />
+      </PageHeader>
 
       <div className="flex flex-wrap items-center gap-4">
         <SearchInput
