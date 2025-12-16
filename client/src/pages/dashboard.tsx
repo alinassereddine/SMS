@@ -52,24 +52,20 @@ interface RecentActivity {
   status: string;
 }
 
-const salesData = [
-  { name: "Mon", sales: 4000, profit: 1200 },
-  { name: "Tue", sales: 3000, profit: 900 },
-  { name: "Wed", sales: 5000, profit: 1500 },
-  { name: "Thu", sales: 2780, profit: 800 },
-  { name: "Fri", sales: 6890, profit: 2100 },
-  { name: "Sat", sales: 8390, profit: 2500 },
-  { name: "Sun", sales: 3490, profit: 1050 },
-];
+interface WeeklySalesData {
+  date: string;
+  day: string;
+  revenue: number;
+  profit: number;
+  sales: number;
+}
 
-const categoryData = [
-  { name: "Phones", value: 45 },
-  { name: "Accessories", value: 25 },
-  { name: "Tablets", value: 15 },
-  { name: "Other", value: 15 },
-];
+interface CategoryData {
+  name: string;
+  value: number;
+}
 
-const COLORS = ["hsl(var(--chart-1))", "hsl(var(--chart-2))", "hsl(var(--chart-3))", "hsl(var(--chart-4))"];
+const COLORS = ["hsl(var(--chart-1))", "hsl(var(--chart-2))", "hsl(var(--chart-3))", "hsl(var(--chart-4))", "hsl(var(--chart-5))"];
 
 export default function Dashboard() {
   const { data: stats, isLoading: statsLoading } = useQuery<DashboardStats>({
@@ -78,6 +74,14 @@ export default function Dashboard() {
 
   const { data: recentActivity, isLoading: activityLoading } = useQuery<RecentActivity[]>({
     queryKey: ["/api/dashboard/activity"],
+  });
+
+  const { data: weeklySalesData, isLoading: weeklySalesLoading } = useQuery<WeeklySalesData[]>({
+    queryKey: ["/api/dashboard/weekly-sales"],
+  });
+
+  const { data: categoryData, isLoading: categoryLoading } = useQuery<CategoryData[]>({
+    queryKey: ["/api/dashboard/sales-by-category"],
   });
 
   const defaultStats: DashboardStats = {
@@ -141,46 +145,51 @@ export default function Dashboard() {
             <Badge variant="secondary" className="text-xs">This Week</Badge>
           </CardHeader>
           <CardContent className="pt-4">
-            <ResponsiveContainer width="100%" height={320}>
-              <LineChart data={salesData}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                <XAxis 
-                  dataKey="name" 
-                  tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
-                  axisLine={{ stroke: "hsl(var(--border))" }}
-                />
-                <YAxis 
-                  tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
-                  axisLine={{ stroke: "hsl(var(--border))" }}
-                  tickFormatter={(value) => `$${value}`}
-                />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "hsl(var(--popover))",
-                    border: "1px solid hsl(var(--border))",
-                    borderRadius: "8px",
-                    fontSize: "12px",
-                  }}
-                  labelStyle={{ color: "hsl(var(--foreground))" }}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="sales"
-                  stroke="hsl(var(--chart-1))"
-                  strokeWidth={2}
-                  dot={false}
-                  name="Sales"
-                />
-                <Line
-                  type="monotone"
-                  dataKey="profit"
-                  stroke="hsl(var(--chart-2))"
-                  strokeWidth={2}
-                  dot={false}
-                  name="Profit"
-                />
-              </LineChart>
-            </ResponsiveContainer>
+            {weeklySalesLoading ? (
+              <div className="h-[320px] flex items-center justify-center text-muted-foreground">Loading...</div>
+            ) : (
+              <ResponsiveContainer width="100%" height={320}>
+                <LineChart data={weeklySalesData || []}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                  <XAxis 
+                    dataKey="day" 
+                    tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
+                    axisLine={{ stroke: "hsl(var(--border))" }}
+                  />
+                  <YAxis 
+                    tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
+                    axisLine={{ stroke: "hsl(var(--border))" }}
+                    tickFormatter={(value) => `$${value}`}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: "hsl(var(--popover))",
+                      border: "1px solid hsl(var(--border))",
+                      borderRadius: "8px",
+                      fontSize: "12px",
+                    }}
+                    labelStyle={{ color: "hsl(var(--foreground))" }}
+                    formatter={(value: number) => [`$${value.toFixed(2)}`, '']}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="revenue"
+                    stroke="hsl(var(--chart-1))"
+                    strokeWidth={2}
+                    dot={false}
+                    name="Revenue"
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="profit"
+                    stroke="hsl(var(--chart-2))"
+                    strokeWidth={2}
+                    dot={false}
+                    name="Profit"
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            )}
           </CardContent>
         </Card>
 
@@ -189,33 +198,38 @@ export default function Dashboard() {
             <CardTitle className="text-base font-medium">Sales by Category</CardTitle>
           </CardHeader>
           <CardContent className="pt-4">
-            <ResponsiveContainer width="100%" height={320}>
-              <PieChart>
-                <Pie
-                  data={categoryData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={60}
-                  outerRadius={100}
-                  paddingAngle={2}
-                  dataKey="value"
-                  label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                  labelLine={false}
-                >
-                  {categoryData.map((_, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "hsl(var(--popover))",
-                    border: "1px solid hsl(var(--border))",
-                    borderRadius: "8px",
-                    fontSize: "12px",
-                  }}
-                />
-              </PieChart>
-            </ResponsiveContainer>
+            {categoryLoading ? (
+              <div className="h-[320px] flex items-center justify-center text-muted-foreground">Loading...</div>
+            ) : (
+              <ResponsiveContainer width="100%" height={320}>
+                <PieChart>
+                  <Pie
+                    data={categoryData || []}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={60}
+                    outerRadius={100}
+                    paddingAngle={2}
+                    dataKey="value"
+                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                    labelLine={false}
+                  >
+                    {(categoryData || []).map((_, index) => (
+                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: "hsl(var(--popover))",
+                      border: "1px solid hsl(var(--border))",
+                      borderRadius: "8px",
+                      fontSize: "12px",
+                    }}
+                    formatter={(value: number) => [`${value}%`, '']}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            )}
           </CardContent>
         </Card>
       </div>

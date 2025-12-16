@@ -1891,6 +1891,37 @@ export async function registerRoutes(
     }
   });
 
+  // Sales by category chart data
+  app.get("/api/dashboard/sales-by-category", async (req, res) => {
+    try {
+      const sales = await storage.getSales();
+      const saleItems = await Promise.all(sales.map(s => storage.getSaleItems(s.id)));
+      const products = await storage.getProducts();
+
+      const productMap = new Map(products.map(p => [p.id, p]));
+      const categoryTotals: Record<string, number> = {};
+
+      saleItems.flat().forEach(item => {
+        const product = productMap.get(item.productId);
+        const category = product?.category || "Other";
+        categoryTotals[category] = (categoryTotals[category] || 0) + item.totalPrice;
+      });
+
+      const totalValue = Object.values(categoryTotals).reduce((a, b) => a + b, 0);
+      
+      const chartData = Object.entries(categoryTotals)
+        .map(([name, value]) => ({
+          name,
+          value: Math.round((value / (totalValue || 1)) * 100),
+        }))
+        .sort((a, b) => b.value - a.value);
+
+      res.json(chartData.length > 0 ? chartData : [{ name: "No sales", value: 100 }]);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch sales by category" });
+    }
+  });
+
   // === REPORTS API ===
 
   // Reports summary with date range
