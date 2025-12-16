@@ -239,6 +239,112 @@ export async function registerRoutes(
     }
   });
 
+  // Customer summary with sales, payments, and balance ledger
+  app.get("/api/customers/:id/summary", async (req, res) => {
+    try {
+      const customer = await storage.getCustomer(req.params.id);
+      if (!customer) return res.status(404).json({ error: "Customer not found" });
+
+      // Get all sales for this customer
+      const allSales = await storage.getSales();
+      const customerSales = allSales
+        .filter(s => s.customerId === req.params.id)
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+      // Get sale items for each sale
+      const allItems = await storage.getItems();
+      const allProducts = await storage.getProducts();
+      
+      const salesWithItems = await Promise.all(customerSales.map(async (sale) => {
+        const saleItems = await storage.getSaleItems(sale.id);
+        const items = saleItems.map(si => {
+          const item = allItems.find(i => i.id === si.itemId);
+          const product = item ? allProducts.find(p => p.id === item.productId) : null;
+          return {
+            ...si,
+            imei: item?.imei || "",
+            product: product || null,
+          };
+        });
+        return { ...sale, items, itemCount: items.length };
+      }));
+
+      // Get all payments for this customer
+      const payments = await storage.getPaymentsByEntity("customer", req.params.id);
+      const sortedPayments = payments.sort((a, b) => 
+        new Date(b.date).getTime() - new Date(a.date).getTime()
+      );
+
+      // Build balance ledger (chronological transactions)
+      type LedgerEntry = {
+        id: string;
+        date: string;
+        type: "sale" | "payment";
+        description: string;
+        debit: number;  // increases balance (what customer owes)
+        credit: number; // decreases balance (what customer paid)
+        runningBalance: number;
+        referenceId: string;
+      };
+
+      const ledgerEntries: Omit<LedgerEntry, "runningBalance">[] = [];
+
+      // Add sales as debits (customer owes the unpaid portion)
+      for (const sale of customerSales) {
+        const unpaidAmount = sale.totalAmount - (sale.paidAmount || 0);
+        if (unpaidAmount > 0) {
+          ledgerEntries.push({
+            id: `sale-${sale.id}`,
+            date: String(sale.date),
+            type: "sale",
+            description: `Sale ${sale.saleNumber}`,
+            debit: unpaidAmount,
+            credit: 0,
+            referenceId: sale.id,
+          });
+        }
+      }
+
+      // Add payments as credits (reduces what customer owes)
+      for (const payment of payments) {
+        ledgerEntries.push({
+          id: `payment-${payment.id}`,
+          date: String(payment.date),
+          type: "payment",
+          description: `Payment - ${payment.paymentMethod}${payment.reference ? ` (${payment.reference})` : ""}`,
+          debit: 0,
+          credit: payment.amount,
+          referenceId: payment.id,
+        });
+      }
+
+      // Sort by date ascending for running balance calculation
+      ledgerEntries.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+      // Calculate running balance
+      let runningBalance = 0;
+      const ledger: LedgerEntry[] = ledgerEntries.map(entry => {
+        runningBalance += entry.debit - entry.credit;
+        return { ...entry, runningBalance };
+      });
+
+      // Reverse for display (most recent first)
+      ledger.reverse();
+
+      res.json({
+        customer,
+        sales: salesWithItems,
+        payments: sortedPayments,
+        ledger,
+        totalSales: customerSales.length,
+        totalPayments: payments.length,
+      });
+    } catch (error) {
+      console.error("Error fetching customer summary:", error);
+      res.status(500).json({ error: "Failed to fetch customer summary" });
+    }
+  });
+
   // ============ SUPPLIERS ============
   app.get("/api/suppliers", async (req, res) => {
     try {
