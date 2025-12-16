@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Eye, Receipt, MoreHorizontal, Printer, Trash2, AlertTriangle } from "lucide-react";
+import { Eye, Receipt, MoreHorizontal, Printer, Trash2, AlertTriangle, Pencil } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { PageHeader } from "@/components/page-header";
@@ -9,6 +9,8 @@ import { SearchInput } from "@/components/search-input";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -32,6 +34,7 @@ import {
 } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { CurrencyInput } from "@/components/currency-input";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils";
 import type { Sale, SaleWithCustomer } from "@shared/schema";
 import { Link } from "wouter";
@@ -41,6 +44,9 @@ export default function Sales() {
   const [paymentFilter, setPaymentFilter] = useState<string>("all");
   const [selectedSale, setSelectedSale] = useState<SaleWithCustomer | null>(null);
   const [deleteConfirmSale, setDeleteConfirmSale] = useState<SaleWithCustomer | null>(null);
+  const [editSale, setEditSale] = useState<SaleWithCustomer | null>(null);
+  const [editDiscount, setEditDiscount] = useState(0);
+  const [editNotes, setEditNotes] = useState("");
   const { toast } = useToast();
 
   const { data: sales = [], isLoading } = useQuery<SaleWithCustomer[]>({
@@ -62,6 +68,38 @@ export default function Sales() {
       toast({ title: error.message || "Failed to delete sale", variant: "destructive" });
     },
   });
+
+  const editMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: { discountAmount?: number; notes?: string | null } }) => {
+      return apiRequest("PATCH", `/api/sales/${id}`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sales"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
+      setEditSale(null);
+      toast({ title: "Sale updated successfully" });
+    },
+    onError: (error: Error) => {
+      toast({ title: error.message || "Failed to update sale", variant: "destructive" });
+    },
+  });
+
+  const handleOpenEdit = (sale: SaleWithCustomer) => {
+    setEditSale(sale);
+    setEditDiscount(sale.discountAmount || 0);
+    setEditNotes(sale.notes || "");
+  };
+
+  const handleSaveEdit = () => {
+    if (!editSale) return;
+    editMutation.mutate({
+      id: editSale.id,
+      data: {
+        discountAmount: editDiscount,
+        notes: editNotes || null,
+      },
+    });
+  };
 
   const filteredSales = sales.filter((sale) => {
     const matchesSearch = 
@@ -148,6 +186,10 @@ export default function Sales() {
             <DropdownMenuItem onClick={() => setSelectedSale(sale)}>
               <Eye className="h-4 w-4 mr-2" />
               View Details
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => handleOpenEdit(sale)}>
+              <Pencil className="h-4 w-4 mr-2" />
+              Edit
             </DropdownMenuItem>
             <DropdownMenuItem>
               <Printer className="h-4 w-4 mr-2" />
@@ -347,6 +389,52 @@ export default function Sales() {
               data-testid="button-confirm-delete"
             >
               {deleteMutation.isPending ? "Deleting..." : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!editSale} onOpenChange={() => setEditSale(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Sale</DialogTitle>
+            <DialogDescription>
+              Edit sale <span className="font-mono font-medium">{editSale?.saleNumber}</span>
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Discount</Label>
+              <CurrencyInput 
+                value={editDiscount} 
+                onChange={setEditDiscount} 
+              />
+              {editSale && editDiscount !== (editSale.discountAmount || 0) && (
+                <p className="text-xs text-muted-foreground">
+                  New total: {formatCurrency(editSale.subtotal - editDiscount)}
+                </p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label>Notes</Label>
+              <Textarea 
+                value={editNotes} 
+                onChange={(e) => setEditNotes(e.target.value)}
+                placeholder="Add notes..."
+                data-testid="input-edit-notes"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditSale(null)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleSaveEdit}
+              disabled={editMutation.isPending}
+              data-testid="button-save-edit"
+            >
+              {editMutation.isPending ? "Saving..." : "Save Changes"}
             </Button>
           </DialogFooter>
         </DialogContent>

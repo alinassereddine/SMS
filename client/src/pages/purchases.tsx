@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, FileText, MoreHorizontal, Eye, Printer, Trash2, Package, AlertTriangle } from "lucide-react";
+import { Plus, FileText, MoreHorizontal, Eye, Printer, Trash2, Package, AlertTriangle, Pencil } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { DataTable, Column } from "@/components/data-table";
 import { SearchInput } from "@/components/search-input";
@@ -31,6 +31,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
@@ -68,6 +69,9 @@ export default function Purchases() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<PurchaseInvoiceWithSupplier | null>(null);
   const [deleteConfirmInvoice, setDeleteConfirmInvoice] = useState<PurchaseInvoiceWithSupplier | null>(null);
+  const [editInvoice, setEditInvoice] = useState<PurchaseInvoiceWithSupplier | null>(null);
+  const [editDiscount, setEditDiscount] = useState(0);
+  const [editNotes, setEditNotes] = useState("");
   const [itemEntries, setItemEntries] = useState<ItemEntry[]>([{ productId: "", imei: "", unitPrice: 0 }]);
   const { toast } = useToast();
 
@@ -148,6 +152,38 @@ export default function Purchases() {
       toast({ title: error.message || "Failed to delete invoice", variant: "destructive" });
     },
   });
+
+  const editMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: { discountAmount?: number; notes?: string | null } }) => {
+      return apiRequest("PATCH", `/api/purchase-invoices/${id}`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/suppliers"] });
+      setEditInvoice(null);
+      toast({ title: "Purchase invoice updated successfully" });
+    },
+    onError: (error: Error) => {
+      toast({ title: error.message || "Failed to update invoice", variant: "destructive" });
+    },
+  });
+
+  const handleOpenEdit = (invoice: PurchaseInvoiceWithSupplier) => {
+    setEditInvoice(invoice);
+    setEditDiscount(invoice.discountAmount || 0);
+    setEditNotes(invoice.notes || "");
+  };
+
+  const handleSaveEdit = () => {
+    if (!editInvoice) return;
+    editMutation.mutate({
+      id: editInvoice.id,
+      data: {
+        discountAmount: editDiscount,
+        notes: editNotes || null,
+      },
+    });
+  };
 
   const handleSubmit = (data: PurchaseFormValues) => {
     createMutation.mutate(data);
@@ -237,6 +273,10 @@ export default function Purchases() {
             <DropdownMenuItem onClick={() => setSelectedInvoice(invoice)}>
               <Eye className="h-4 w-4 mr-2" />
               View Details
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => handleOpenEdit(invoice)}>
+              <Pencil className="h-4 w-4 mr-2" />
+              Edit
             </DropdownMenuItem>
             <DropdownMenuItem>
               <Printer className="h-4 w-4 mr-2" />
@@ -535,6 +575,52 @@ export default function Purchases() {
               data-testid="button-confirm-delete"
             >
               {deleteMutation.isPending ? "Deleting..." : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!editInvoice} onOpenChange={() => setEditInvoice(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Purchase Invoice</DialogTitle>
+            <DialogDescription>
+              Edit invoice <span className="font-mono font-medium">{editInvoice?.invoiceNumber}</span>
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Discount</Label>
+              <CurrencyInput 
+                value={editDiscount} 
+                onChange={setEditDiscount} 
+              />
+              {editInvoice && editDiscount !== (editInvoice.discountAmount || 0) && (
+                <p className="text-xs text-muted-foreground">
+                  New total: {formatCurrency(editInvoice.subtotal - editDiscount)}
+                </p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label>Notes</Label>
+              <Textarea 
+                value={editNotes} 
+                onChange={(e) => setEditNotes(e.target.value)}
+                placeholder="Add notes..."
+                data-testid="input-edit-notes"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditInvoice(null)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleSaveEdit}
+              disabled={editMutation.isPending}
+              data-testid="button-save-edit"
+            >
+              {editMutation.isPending ? "Saving..." : "Save Changes"}
             </Button>
           </DialogFooter>
         </DialogContent>

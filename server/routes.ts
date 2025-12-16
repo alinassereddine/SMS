@@ -511,6 +511,79 @@ export async function registerRoutes(
     }
   });
 
+  // Update sale (notes and discount only)
+  const updateSaleSchema = z.object({
+    discountAmount: z.number().optional(),
+    notes: z.string().nullable().optional(),
+  });
+
+  app.patch("/api/sales/:id", requirePermission("sales:write"), async (req, res) => {
+    try {
+      const sale = await storage.getSale(req.params.id);
+      if (!sale) return res.status(404).json({ error: "Sale not found" });
+
+      if (sale.cashRegisterSessionId) {
+        const session = await storage.getCashRegisterSession(sale.cashRegisterSessionId);
+        if (session && session.status === "closed") {
+          return res.status(400).json({ 
+            error: "Cannot edit: Sale is linked to a closed cash register session" 
+          });
+        }
+      }
+
+      const data = updateSaleSchema.parse(req.body);
+      
+      // Recalculate totals if discount changed
+      let updateData: Record<string, unknown> = { ...data };
+      if (data.discountAmount !== undefined && data.discountAmount !== sale.discountAmount) {
+        // Validate discount doesn't exceed subtotal
+        if (data.discountAmount > sale.subtotal) {
+          return res.status(400).json({ error: "Discount cannot exceed subtotal" });
+        }
+        
+        const newTotal = sale.subtotal - data.discountAmount;
+        const paidAmount = sale.paidAmount || 0;
+        const newBalanceImpact = Math.max(0, newTotal - paidAmount);
+        
+        // Recalculate payment type
+        let newPaymentType = "credit";
+        if (paidAmount >= newTotal) {
+          newPaymentType = "full";
+        } else if (paidAmount > 0) {
+          newPaymentType = "partial";
+        }
+        
+        // If balance changed and customer exists, update customer balance
+        if (sale.customerId && newBalanceImpact !== sale.balanceImpact) {
+          const customer = await storage.getCustomer(sale.customerId);
+          if (customer) {
+            const balanceDiff = newBalanceImpact - sale.balanceImpact;
+            await storage.updateCustomer(sale.customerId, {
+              balance: Math.max(0, (customer.balance || 0) + balanceDiff),
+            });
+          }
+        }
+        
+        // Ensure profit doesn't go negative
+        const profitReduction = data.discountAmount - (sale.discountAmount || 0);
+        const newProfit = Math.max(0, sale.profit - profitReduction);
+        
+        updateData.totalAmount = newTotal;
+        updateData.balanceImpact = newBalanceImpact;
+        updateData.paymentType = newPaymentType;
+        updateData.profit = newProfit;
+      }
+
+      const updated = await storage.updateSale(req.params.id, updateData);
+      res.json(updated);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      res.status(500).json({ error: "Failed to update sale" });
+    }
+  });
+
   // ============ PURCHASE INVOICES ============
   app.get("/api/purchase-invoices", async (req, res) => {
     try {
@@ -712,6 +785,65 @@ export async function registerRoutes(
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ error: "Failed to delete purchase invoice" });
+    }
+  });
+
+  // Update purchase invoice (notes and discount only)
+  const updatePurchaseInvoiceSchema = z.object({
+    discountAmount: z.number().optional(),
+    notes: z.string().nullable().optional(),
+  });
+
+  app.patch("/api/purchase-invoices/:id", requirePermission("purchases:write"), async (req, res) => {
+    try {
+      const invoice = await storage.getPurchaseInvoice(req.params.id);
+      if (!invoice) return res.status(404).json({ error: "Purchase invoice not found" });
+
+      const data = updatePurchaseInvoiceSchema.parse(req.body);
+      
+      // Recalculate totals if discount changed
+      let updateData: Record<string, unknown> = { ...data };
+      if (data.discountAmount !== undefined && data.discountAmount !== invoice.discountAmount) {
+        // Validate discount doesn't exceed subtotal
+        if (data.discountAmount > invoice.subtotal) {
+          return res.status(400).json({ error: "Discount cannot exceed subtotal" });
+        }
+        
+        const newTotal = invoice.subtotal - data.discountAmount;
+        const paidAmount = invoice.paidAmount || 0;
+        const newBalanceImpact = Math.max(0, newTotal - paidAmount);
+        
+        // Recalculate payment type
+        let newPaymentType = "credit";
+        if (paidAmount >= newTotal) {
+          newPaymentType = "full";
+        } else if (paidAmount > 0) {
+          newPaymentType = "partial";
+        }
+        
+        // If balance changed and supplier exists, update supplier balance
+        if (newBalanceImpact !== invoice.balanceImpact) {
+          const supplier = await storage.getSupplier(invoice.supplierId);
+          if (supplier) {
+            const balanceDiff = newBalanceImpact - invoice.balanceImpact;
+            await storage.updateSupplier(invoice.supplierId, {
+              balance: Math.max(0, (supplier.balance || 0) + balanceDiff),
+            });
+          }
+        }
+        
+        updateData.totalAmount = newTotal;
+        updateData.balanceImpact = newBalanceImpact;
+        updateData.paymentType = newPaymentType;
+      }
+
+      const updated = await storage.updatePurchaseInvoice(req.params.id, updateData);
+      res.json(updated);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      res.status(500).json({ error: "Failed to update purchase invoice" });
     }
   });
 
@@ -1161,8 +1293,8 @@ export async function registerRoutes(
       const totalProfit = filteredSales.reduce((sum, s) => sum + s.profit, 0);
       const totalPurchases = filteredPurchases.reduce((sum, p) => sum + p.totalAmount, 0);
       const totalExpenses = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
-      const customerPayments = filteredPayments.filter(p => p.partyType === "customer").reduce((sum, p) => sum + p.amount, 0);
-      const supplierPayments = filteredPayments.filter(p => p.partyType === "supplier").reduce((sum, p) => sum + p.amount, 0);
+      const customerPayments = filteredPayments.filter(p => p.type === "customer").reduce((sum, p) => sum + p.amount, 0);
+      const supplierPayments = filteredPayments.filter(p => p.type === "supplier").reduce((sum, p) => sum + p.amount, 0);
       const netCashFlow = customerPayments - supplierPayments - totalExpenses;
 
       res.json({
@@ -1398,7 +1530,7 @@ export async function registerRoutes(
         if (!dailyPayments[key]) {
           dailyPayments[key] = { incoming: 0, outgoing: 0 };
         }
-        if (payment.partyType === "customer") {
+        if (payment.type === "customer") {
           dailyPayments[key].incoming += payment.amount;
         } else {
           dailyPayments[key].outgoing += payment.amount;

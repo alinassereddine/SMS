@@ -136,8 +136,12 @@ export default function POS() {
       setIsCheckoutOpen(false);
       toast({ title: "Sale completed successfully!" });
     },
-    onError: () => {
-      toast({ title: "Failed to complete sale", variant: "destructive" });
+    onError: (error: Error) => {
+      toast({ 
+        title: "Failed to complete sale", 
+        description: error.message,
+        variant: "destructive" 
+      });
     },
   });
 
@@ -151,6 +155,14 @@ export default function POS() {
   };
 
   const handleCompleteSale = () => {
+    if (paidAmount < total && !customerId) {
+      toast({ 
+        title: "Customer required for credit sales", 
+        description: "Please select a customer to track the outstanding balance.",
+        variant: "destructive" 
+      });
+      return;
+    }
     createSaleMutation.mutate();
   };
 
