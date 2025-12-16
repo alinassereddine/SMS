@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { CreditCard, DollarSign, Clock, CheckCircle, AlertCircle, Play, Square, MoreHorizontal, Pencil } from "lucide-react";
+import { CreditCard, DollarSign, Clock, CheckCircle, AlertCircle, Play, Square, MoreHorizontal, Pencil, Download } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { DataTable, Column } from "@/components/data-table";
 import { StatusBadge } from "@/components/status-badge";
@@ -30,6 +30,47 @@ import { formatCurrency, formatDateTime, generateSessionNumber } from "@/lib/uti
 import type { CashRegisterSession } from "@shared/schema";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+
+function exportSessionToCSV(session: CashRegisterSession) {
+  const formatValue = (v: any) => v === null || v === undefined ? "" : String(v);
+  const escapeCSV = (value: string) => {
+    if (value.includes(",") || value.includes('"') || value.includes("\n")) {
+      return `"${value.replace(/"/g, '""')}"`;
+    }
+    return value;
+  };
+
+  const rows = [
+    ["Session Details"],
+    ["Session Number", session.sessionNumber],
+    ["Status", session.status],
+    ["Opened At", session.openedAt ? new Date(session.openedAt).toLocaleString() : ""],
+    ["Closed At", session.closedAt ? new Date(session.closedAt).toLocaleString() : ""],
+    ["Opened By", session.openedBy || ""],
+    ["Closed By", session.closedBy || ""],
+    [""],
+    ["Financial Summary"],
+    ["Opening Balance", ((session.openingBalance || 0) / 100).toFixed(2)],
+    ["Expected Balance", ((session.expectedBalance || 0) / 100).toFixed(2)],
+    ["Actual Balance", session.actualBalance !== null ? ((session.actualBalance || 0) / 100).toFixed(2) : ""],
+    ["Closing Balance", session.closingBalance !== null ? ((session.closingBalance || 0) / 100).toFixed(2) : ""],
+    ["Difference", session.difference !== null ? ((session.difference || 0) / 100).toFixed(2) : ""],
+    [""],
+    ["Notes", session.notes || ""],
+  ];
+
+  const csv = rows.map(row => row.map(cell => escapeCSV(formatValue(cell))).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  const timestamp = new Date().toISOString().split("T")[0];
+  link.href = url;
+  link.download = `cash_register_${session.sessionNumber}_${timestamp}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
 
 interface SessionTransaction {
   id: string;
@@ -235,6 +276,10 @@ export default function CashRegister() {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => exportSessionToCSV(session)} data-testid={`button-export-${session.id}`}>
+              <Download className="h-4 w-4 mr-2" />
+              Export
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={() => handleOpenEditDate(session)}>
               <Pencil className="h-4 w-4 mr-2" />
               Edit Date
