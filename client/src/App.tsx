@@ -22,6 +22,7 @@ import Purchases from "@/pages/purchases";
 import CashRegister from "@/pages/cash-register";
 import Payments from "@/pages/payments";
 import Expenses from "@/pages/expenses";
+import Reports from "@/pages/reports";
 import Settings from "@/pages/settings";
 import NotFound from "@/pages/not-found";
 
@@ -39,6 +40,7 @@ function Router() {
       <Route path="/cash-register" component={CashRegister} />
       <Route path="/payments" component={Payments} />
       <Route path="/expenses" component={Expenses} />
+      <Route path="/reports" component={Reports} />
       <Route path="/settings" component={Settings} />
       <Route component={NotFound} />
     </Switch>

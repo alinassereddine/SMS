@@ -896,5 +896,341 @@ export async function registerRoutes(
     }
   });
 
+  // === REPORTS API ===
+
+  // Reports summary with date range
+  app.get("/api/reports/summary", async (req, res) => {
+    try {
+      const { startDate, endDate } = req.query;
+      const start = startDate ? new Date(startDate as string) : new Date(new Date().setMonth(new Date().getMonth() - 1));
+      const end = endDate ? new Date(endDate as string) : new Date();
+      end.setHours(23, 59, 59, 999);
+
+      const sales = await storage.getSales();
+      const purchases = await storage.getPurchaseInvoices();
+      const payments = await storage.getPayments();
+      const expenses = await storage.getExpenses();
+
+      // Filter by date range
+      const filteredSales = sales.filter(s => {
+        const d = new Date(s.date);
+        return d >= start && d <= end;
+      });
+
+      const filteredPurchases = purchases.filter(p => {
+        const d = new Date(p.date);
+        return d >= start && d <= end;
+      });
+
+      const filteredPayments = payments.filter(p => {
+        const d = new Date(p.date);
+        return d >= start && d <= end;
+      });
+
+      const filteredExpenses = expenses.filter(e => {
+        const d = new Date(e.date);
+        return d >= start && d <= end;
+      });
+
+      const totalRevenue = filteredSales.reduce((sum, s) => sum + s.totalAmount, 0);
+      const totalProfit = filteredSales.reduce((sum, s) => sum + s.profit, 0);
+      const totalPurchases = filteredPurchases.reduce((sum, p) => sum + p.totalAmount, 0);
+      const totalExpenses = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
+      const customerPayments = filteredPayments.filter(p => p.partyType === "customer").reduce((sum, p) => sum + p.amount, 0);
+      const supplierPayments = filteredPayments.filter(p => p.partyType === "supplier").reduce((sum, p) => sum + p.amount, 0);
+      const netCashFlow = customerPayments - supplierPayments - totalExpenses;
+
+      res.json({
+        totalRevenue,
+        totalProfit,
+        totalPurchases,
+        totalExpenses,
+        customerPayments,
+        supplierPayments,
+        netCashFlow,
+        salesCount: filteredSales.length,
+        purchaseCount: filteredPurchases.length,
+        expenseCount: filteredExpenses.length,
+        profitMargin: totalRevenue > 0 ? Math.round((totalProfit / totalRevenue) * 100) : 0,
+      });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch report summary" });
+    }
+  });
+
+  // Sales trends by day/week/month
+  app.get("/api/reports/sales-trends", async (req, res) => {
+    try {
+      const { startDate, endDate, groupBy = "day" } = req.query;
+      const start = startDate ? new Date(startDate as string) : new Date(new Date().setMonth(new Date().getMonth() - 1));
+      const end = endDate ? new Date(endDate as string) : new Date();
+      end.setHours(23, 59, 59, 999);
+
+      const sales = await storage.getSales();
+
+      const filteredSales = sales.filter(s => {
+        const d = new Date(s.date);
+        return d >= start && d <= end;
+      });
+
+      const groupedData: Record<string, { revenue: number; profit: number; count: number }> = {};
+
+      filteredSales.forEach(sale => {
+        const saleDate = new Date(sale.date);
+        let key: string;
+        
+        if (groupBy === "week") {
+          const weekStart = new Date(saleDate);
+          weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+          key = weekStart.toISOString().split("T")[0];
+        } else if (groupBy === "month") {
+          key = `${saleDate.getFullYear()}-${String(saleDate.getMonth() + 1).padStart(2, "0")}`;
+        } else {
+          key = saleDate.toISOString().split("T")[0];
+        }
+
+        if (!groupedData[key]) {
+          groupedData[key] = { revenue: 0, profit: 0, count: 0 };
+        }
+        groupedData[key].revenue += sale.totalAmount;
+        groupedData[key].profit += sale.profit;
+        groupedData[key].count += 1;
+      });
+
+      const chartData = Object.entries(groupedData)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([date, data]) => ({
+          date,
+          label: groupBy === "month" 
+            ? new Date(date + "-01").toLocaleDateString("en-US", { month: "short", year: "2-digit" })
+            : new Date(date).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+          revenue: data.revenue,
+          profit: data.profit,
+          count: data.count,
+        }));
+
+      res.json(chartData);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch sales trends" });
+    }
+  });
+
+  // Top products by profit/sales
+  app.get("/api/reports/top-products", async (req, res) => {
+    try {
+      const { startDate, endDate, limit = "10", sortBy = "profit" } = req.query;
+      const start = startDate ? new Date(startDate as string) : new Date(new Date().setMonth(new Date().getMonth() - 1));
+      const end = endDate ? new Date(endDate as string) : new Date();
+      end.setHours(23, 59, 59, 999);
+
+      const sales = await storage.getSales();
+      const items = await storage.getItems();
+      const products = await storage.getProducts();
+
+      // Filter sales by date
+      const filteredSales = sales.filter(s => {
+        const d = new Date(s.date);
+        return d >= start && d <= end;
+      });
+
+      const saleIds = new Set(filteredSales.map(s => s.id));
+
+      // Get sold items from filtered sales
+      const soldItems = items.filter(i => i.saleId && saleIds.has(i.saleId));
+
+      // Aggregate by product
+      const productStats: Record<string, { productId: string; revenue: number; profit: number; count: number }> = {};
+
+      soldItems.forEach(item => {
+        if (!productStats[item.productId]) {
+          productStats[item.productId] = { productId: item.productId, revenue: 0, profit: 0, count: 0 };
+        }
+        productStats[item.productId].revenue += item.salePrice || 0;
+        productStats[item.productId].profit += (item.salePrice || 0) - item.purchasePrice;
+        productStats[item.productId].count += 1;
+      });
+
+      const productsMap = new Map(products.map(p => [p.id, p]));
+
+      const result = Object.values(productStats)
+        .sort((a, b) => sortBy === "profit" ? b.profit - a.profit : b.revenue - a.revenue)
+        .slice(0, parseInt(limit as string))
+        .map(stat => ({
+          ...stat,
+          product: productsMap.get(stat.productId),
+        }));
+
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch top products" });
+    }
+  });
+
+  // Top customers by spending
+  app.get("/api/reports/top-customers", async (req, res) => {
+    try {
+      const { startDate, endDate, limit = "10" } = req.query;
+      const start = startDate ? new Date(startDate as string) : new Date(new Date().setMonth(new Date().getMonth() - 1));
+      const end = endDate ? new Date(endDate as string) : new Date();
+      end.setHours(23, 59, 59, 999);
+
+      const sales = await storage.getSales();
+      const customers = await storage.getCustomers();
+
+      const filteredSales = sales.filter(s => {
+        const d = new Date(s.date);
+        return d >= start && d <= end && s.customerId;
+      });
+
+      const customerStats: Record<string, { customerId: string; revenue: number; profit: number; count: number }> = {};
+
+      filteredSales.forEach(sale => {
+        if (!sale.customerId) return;
+        if (!customerStats[sale.customerId]) {
+          customerStats[sale.customerId] = { customerId: sale.customerId, revenue: 0, profit: 0, count: 0 };
+        }
+        customerStats[sale.customerId].revenue += sale.totalAmount;
+        customerStats[sale.customerId].profit += sale.profit;
+        customerStats[sale.customerId].count += 1;
+      });
+
+      const customersMap = new Map(customers.map(c => [c.id, c]));
+
+      const result = Object.values(customerStats)
+        .sort((a, b) => b.revenue - a.revenue)
+        .slice(0, parseInt(limit as string))
+        .map(stat => ({
+          ...stat,
+          customer: customersMap.get(stat.customerId),
+        }));
+
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch top customers" });
+    }
+  });
+
+  // Supplier purchase analysis
+  app.get("/api/reports/supplier-analysis", async (req, res) => {
+    try {
+      const { startDate, endDate } = req.query;
+      const start = startDate ? new Date(startDate as string) : new Date(new Date().setMonth(new Date().getMonth() - 1));
+      const end = endDate ? new Date(endDate as string) : new Date();
+      end.setHours(23, 59, 59, 999);
+
+      const purchases = await storage.getPurchaseInvoices();
+      const suppliers = await storage.getSuppliers();
+
+      const filteredPurchases = purchases.filter(p => {
+        const d = new Date(p.date);
+        return d >= start && d <= end;
+      });
+
+      const supplierStats: Record<string, { supplierId: string; totalPurchases: number; itemCount: number; invoiceCount: number }> = {};
+
+      filteredPurchases.forEach(purchase => {
+        if (!supplierStats[purchase.supplierId]) {
+          supplierStats[purchase.supplierId] = { supplierId: purchase.supplierId, totalPurchases: 0, itemCount: 0, invoiceCount: 0 };
+        }
+        supplierStats[purchase.supplierId].totalPurchases += purchase.totalAmount;
+        supplierStats[purchase.supplierId].invoiceCount += 1;
+      });
+
+      const suppliersMap = new Map(suppliers.map(s => [s.id, s]));
+
+      const result = Object.values(supplierStats)
+        .sort((a, b) => b.totalPurchases - a.totalPurchases)
+        .map(stat => ({
+          ...stat,
+          supplier: suppliersMap.get(stat.supplierId),
+        }));
+
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch supplier analysis" });
+    }
+  });
+
+  // Payment trends
+  app.get("/api/reports/payment-trends", async (req, res) => {
+    try {
+      const { startDate, endDate } = req.query;
+      const start = startDate ? new Date(startDate as string) : new Date(new Date().setMonth(new Date().getMonth() - 1));
+      const end = endDate ? new Date(endDate as string) : new Date();
+      end.setHours(23, 59, 59, 999);
+
+      const payments = await storage.getPayments();
+
+      const filteredPayments = payments.filter(p => {
+        const d = new Date(p.date);
+        return d >= start && d <= end;
+      });
+
+      const dailyPayments: Record<string, { incoming: number; outgoing: number }> = {};
+
+      filteredPayments.forEach(payment => {
+        const key = new Date(payment.date).toISOString().split("T")[0];
+        if (!dailyPayments[key]) {
+          dailyPayments[key] = { incoming: 0, outgoing: 0 };
+        }
+        if (payment.partyType === "customer") {
+          dailyPayments[key].incoming += payment.amount;
+        } else {
+          dailyPayments[key].outgoing += payment.amount;
+        }
+      });
+
+      const chartData = Object.entries(dailyPayments)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([date, data]) => ({
+          date,
+          label: new Date(date).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+          incoming: data.incoming,
+          outgoing: data.outgoing,
+          net: data.incoming - data.outgoing,
+        }));
+
+      res.json(chartData);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch payment trends" });
+    }
+  });
+
+  // Expenses by category
+  app.get("/api/reports/expenses-by-category", async (req, res) => {
+    try {
+      const { startDate, endDate } = req.query;
+      const start = startDate ? new Date(startDate as string) : new Date(new Date().setMonth(new Date().getMonth() - 1));
+      const end = endDate ? new Date(endDate as string) : new Date();
+      end.setHours(23, 59, 59, 999);
+
+      const expenses = await storage.getExpenses();
+
+      const filteredExpenses = expenses.filter(e => {
+        const d = new Date(e.date);
+        return d >= start && d <= end;
+      });
+
+      const categoryTotals: Record<string, number> = {};
+
+      filteredExpenses.forEach(expense => {
+        const category = expense.category || "Uncategorized";
+        categoryTotals[category] = (categoryTotals[category] || 0) + expense.amount;
+      });
+
+      const result = Object.entries(categoryTotals)
+        .sort(([, a], [, b]) => b - a)
+        .map(([category, amount]) => ({
+          category,
+          amount,
+          percentage: Math.round((amount / filteredExpenses.reduce((sum, e) => sum + e.amount, 0)) * 100) || 0,
+        }));
+
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch expenses by category" });
+    }
+  });
+
   return httpServer;
 }

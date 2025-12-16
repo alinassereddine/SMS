@@ -12,6 +12,7 @@ import {
   Settings,
   LogOut,
   DollarSign,
+  BarChart3,
 } from "lucide-react";
 import {
   Sidebar,
@@ -54,6 +55,7 @@ const financeNavItems = [
   { title: "Cash Register", url: "/cash-register", icon: CreditCard },
   { title: "Payments", url: "/payments", icon: Wallet },
   { title: "Expenses", url: "/expenses", icon: DollarSign },
+  { title: "Reports", url: "/reports", icon: BarChart3 },
 ];
 
 const adminNavItems = [
