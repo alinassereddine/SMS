@@ -51,6 +51,7 @@ const paymentFormSchema = z.object({
   type: z.enum(["customer", "supplier"]),
   entityId: z.string().min(1, "Please select a customer or supplier"),
   amount: z.number().min(1, "Amount must be greater than 0"),
+  transactionType: z.enum(["payment", "refund"]),
   paymentMethod: z.enum(["cash", "card", "transfer", "check"]),
   reference: z.string().optional(),
   notes: z.string().optional(),
@@ -82,6 +83,7 @@ export default function Payments() {
       type: "customer",
       entityId: "",
       amount: 0,
+      transactionType: "payment",
       paymentMethod: "cash",
       reference: "",
       notes: "",
@@ -89,6 +91,7 @@ export default function Payments() {
   });
 
   const paymentType = form.watch("type");
+  const transactionType = form.watch("transactionType");
 
   const createMutation = useMutation({
     mutationFn: async (data: PaymentFormValues) => {
@@ -146,15 +149,27 @@ export default function Payments() {
     {
       key: "amount",
       header: "Amount",
-      render: (payment) => (
-        <span className={`font-mono text-sm font-medium ${
-          payment.type === "customer" 
-            ? "text-emerald-600 dark:text-emerald-400" 
-            : "text-red-600 dark:text-red-400"
-        }`}>
-          {payment.type === "customer" ? "+" : "-"}{formatCurrency(payment.amount)}
-        </span>
-      ),
+      render: (payment) => {
+        const isRefund = payment.transactionType === "refund";
+        const isFromCustomer = payment.type === "customer";
+        // Payment from customer = positive (we receive), Refund to customer = negative (we give back)
+        // Payment to supplier = negative (we pay), Refund from supplier = positive (we receive back)
+        const isPositive = isFromCustomer ? !isRefund : isRefund;
+        return (
+          <div className="flex items-center gap-2">
+            <span className={`font-mono text-sm font-medium ${
+              isPositive 
+                ? "text-emerald-600 dark:text-emerald-400" 
+                : "text-red-600 dark:text-red-400"
+            }`}>
+              {isPositive ? "+" : "-"}{formatCurrency(payment.amount)}
+            </span>
+            {isRefund && (
+              <Badge variant="outline" className="text-xs">Refund</Badge>
+            )}
+          </div>
+        );
+      },
     },
     {
       key: "method",
@@ -349,6 +364,28 @@ export default function Payments() {
                               </SelectItem>
                             ))
                         }
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="transactionType"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Transaction Type</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-transaction-type">
+                          <SelectValue />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="payment">Payment</SelectItem>
+                        <SelectItem value="refund">Refund</SelectItem>
                       </SelectContent>
                     </Select>
                     <FormMessage />

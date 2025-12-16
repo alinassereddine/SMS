@@ -143,6 +143,7 @@ export const payments = pgTable("payments", {
   type: text("type").notNull(), // customer, supplier
   entityId: varchar("entity_id").notNull(), // customer_id or supplier_id
   amount: integer("amount").notNull(),
+  transactionType: text("transaction_type").notNull().default("payment"), // payment, refund
   date: timestamp("date").notNull().defaultNow(),
   paymentMethod: text("payment_method").notNull(), // cash, card, transfer, check
   reference: text("reference"),

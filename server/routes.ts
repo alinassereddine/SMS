@@ -1489,6 +1489,12 @@ export async function registerRoutes(
       // Get active cash register session
       const activeSession = await storage.getActiveCashRegisterSession();
       
+      // Determine balance impact based on transaction type
+      // Payment: reduces balance (entity owes less)
+      // Refund: increases balance (entity owes more / we owe less)
+      const isRefund = data.transactionType === "refund";
+      const balanceChange = isRefund ? data.amount : -data.amount;
+      
       const payment = await storage.createPayment({
         ...data,
         cashRegisterSessionId: activeSession?.id || null,
@@ -1499,14 +1505,14 @@ export async function registerRoutes(
         const customer = await storage.getCustomer(data.entityId);
         if (customer) {
           await storage.updateCustomer(data.entityId, {
-            balance: (customer.balance || 0) - data.amount,
+            balance: (customer.balance || 0) + balanceChange,
           });
         }
       } else if (data.type === "supplier") {
         const supplier = await storage.getSupplier(data.entityId);
         if (supplier) {
           await storage.updateSupplier(data.entityId, {
-            balance: (supplier.balance || 0) - data.amount,
+            balance: (supplier.balance || 0) + balanceChange,
           });
         }
       }
