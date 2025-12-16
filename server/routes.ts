@@ -1680,7 +1680,46 @@ export async function registerRoutes(
   app.get("/api/cash-register/active", async (req, res) => {
     try {
       const session = await storage.getActiveCashRegisterSession();
-      res.json(session || null);
+      if (!session) {
+        return res.json(null);
+      }
+      
+      // Calculate expected balance in real-time
+      const sales = await storage.getSales();
+      const payments = await storage.getPayments();
+      const expenses = await storage.getExpenses();
+
+      const sessionSales = sales.filter(s => s.cashRegisterSessionId === session.id);
+      const sessionPayments = payments.filter(p => p.cashRegisterSessionId === session.id);
+      const sessionExpenses = expenses.filter(e => e.cashRegisterSessionId === session.id);
+
+      const salesCash = sessionSales
+        .filter(s => s.paymentMethod === "cash")
+        .reduce((sum, s) => sum + (s.paidAmount ?? 0), 0);
+      
+      const paymentsCash = sessionPayments
+        .filter(p => p.paymentMethod === "cash")
+        .reduce((sum, p) => {
+          const isRefund = p.transactionType === "refund";
+          const isCustomer = p.type === "customer";
+          if (isCustomer) {
+            return sum + (isRefund ? -p.amount : p.amount);
+          } else {
+            return sum + (isRefund ? p.amount : -p.amount);
+          }
+        }, 0);
+      
+      const expensesCash = sessionExpenses
+        .filter(e => e.paymentMethod === "cash")
+        .reduce((sum, e) => sum + e.amount, 0);
+
+      const expectedBalance = session.openingBalance + salesCash + paymentsCash - expensesCash;
+      
+      res.json({
+        ...session,
+        expectedBalance,
+        transactionCount: sessionSales.length + sessionPayments.length + sessionExpenses.length,
+      });
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch active session" });
     }
