@@ -1988,6 +1988,24 @@ export async function registerRoutes(
     }
   });
 
+  app.patch("/api/expenses/:id", requirePermission("expenses:write"), async (req, res) => {
+    try {
+      const existing = await storage.getExpense(req.params.id);
+      if (!existing) {
+        return res.status(404).json({ error: "Expense not found" });
+      }
+      
+      const data = insertExpenseSchema.partial().parse(req.body);
+      const expense = await storage.updateExpense(req.params.id, data);
+      res.json(expense);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      res.status(500).json({ error: "Failed to update expense" });
+    }
+  });
+
   app.delete("/api/expenses/:id", async (req, res) => {
     try {
       await storage.deleteExpense(req.params.id);

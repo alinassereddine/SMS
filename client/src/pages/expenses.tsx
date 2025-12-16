@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, DollarSign, MoreHorizontal, Trash2, TrendingDown, Calendar, Wallet } from "lucide-react";
+import { Plus, DollarSign, MoreHorizontal, Trash2, TrendingDown, Calendar, Wallet, Pencil } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { DataTable, Column } from "@/components/data-table";
 import { SearchInput } from "@/components/search-input";
@@ -122,6 +122,9 @@ function getDateRange(preset: DatePreset): { from: Date | null; to: Date } {
 export default function Expenses() {
   const [search, setSearch] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isEditDateDialogOpen, setIsEditDateDialogOpen] = useState(false);
+  const [selectedExpense, setSelectedExpense] = useState<Expense | null>(null);
+  const [editDate, setEditDate] = useState("");
   const [datePreset, setDatePreset] = useState<DatePreset>("month");
   const { toast } = useToast();
 
@@ -170,8 +173,35 @@ export default function Expenses() {
     },
   });
 
+  const updateDateMutation = useMutation({
+    mutationFn: async ({ id, date }: { id: string; date: string }) => {
+      return apiRequest("PATCH", `/api/expenses/${id}`, { date: new Date(date) });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
+      setIsEditDateDialogOpen(false);
+      setSelectedExpense(null);
+      toast({ title: "Expense date updated successfully" });
+    },
+    onError: () => {
+      toast({ title: "Failed to update expense date", variant: "destructive" });
+    },
+  });
+
   const handleSubmit = (data: ExpenseFormValues) => {
     createMutation.mutate(data);
+  };
+
+  const handleEditDate = (expense: Expense) => {
+    setSelectedExpense(expense);
+    setEditDate(new Date(expense.date).toISOString().split("T")[0]);
+    setIsEditDateDialogOpen(true);
+  };
+
+  const handleSaveDate = () => {
+    if (selectedExpense && editDate) {
+      updateDateMutation.mutate({ id: selectedExpense.id, date: editDate });
+    }
   };
 
   const filteredExpenses = useMemo(() => {
@@ -261,6 +291,10 @@ export default function Expenses() {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => handleEditDate(expense)}>
+              <Pencil className="h-4 w-4 mr-2" />
+              Edit Date
+            </DropdownMenuItem>
             <DropdownMenuItem 
               onClick={() => deleteMutation.mutate(expense.id)}
               className="text-destructive"
@@ -570,6 +604,44 @@ export default function Expenses() {
               </DialogFooter>
             </form>
           </Form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isEditDateDialogOpen} onOpenChange={setIsEditDateDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Expense Date</DialogTitle>
+            <DialogDescription>
+              Change the date for this expense
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Date</label>
+              <Input
+                type="date"
+                value={editDate}
+                onChange={(e) => setEditDate(e.target.value)}
+                data-testid="input-edit-expense-date"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button 
+              type="button" 
+              variant="outline" 
+              onClick={() => setIsEditDateDialogOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSaveDate}
+              disabled={updateDateMutation.isPending}
+              data-testid="button-save-expense-date"
+            >
+              {updateDateMutation.isPending ? "Saving..." : "Save Date"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
