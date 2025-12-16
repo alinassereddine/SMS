@@ -15,7 +15,8 @@ import {
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { ArrowLeft, Building2, Phone, Mail, MapPin, Package, CreditCard, Receipt } from "lucide-react";
+import { ArrowLeft, Building2, Phone, Mail, MapPin, Package, CreditCard, Receipt, ChevronDown, ChevronRight } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import type { Supplier, PurchaseInvoice, Payment, Product } from "@shared/schema";
 
@@ -228,50 +229,69 @@ export default function SupplierDetails() {
               {purchases.length === 0 ? (
                 <p className="text-center text-muted-foreground py-8">No purchases yet</p>
               ) : (
-                <ScrollArea className="max-h-[500px]">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Invoice #</TableHead>
-                        <TableHead>Date</TableHead>
-                        <TableHead>Items</TableHead>
-                        <TableHead className="text-right">Total</TableHead>
-                        <TableHead className="text-right">Paid</TableHead>
-                        <TableHead className="text-right">Balance</TableHead>
-                        <TableHead>Status</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {purchases.map((purchase) => {
-                        const balance = purchase.totalAmount - (purchase.paidAmount || 0);
-                        return (
-                          <TableRow key={purchase.id} data-testid={`row-purchase-${purchase.id}`}>
-                            <TableCell className="font-mono">{purchase.invoiceNumber}</TableCell>
-                            <TableCell>{formatDate(purchase.date)}</TableCell>
-                            <TableCell>{purchase.itemCount} item(s)</TableCell>
-                            <TableCell className="text-right font-mono">
-                              {formatCurrency(purchase.totalAmount)}
-                            </TableCell>
-                            <TableCell className="text-right font-mono">
-                              {formatCurrency(purchase.paidAmount || 0)}
-                            </TableCell>
-                            <TableCell className="text-right font-mono">
-                              {balance > 0 ? (
-                                <span className="text-amber-600">{formatCurrency(balance)}</span>
-                              ) : (
-                                <span className="text-emerald-600">{formatCurrency(0)}</span>
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant={purchase.paymentType === "full" ? "default" : "secondary"}>
-                                {purchase.paymentType}
-                              </Badge>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
+                <ScrollArea className="max-h-[600px]">
+                  <div className="space-y-2">
+                    {purchases.map((purchase) => {
+                      const balance = purchase.totalAmount - (purchase.paidAmount || 0);
+                      return (
+                        <Collapsible key={purchase.id}>
+                          <div className="border rounded-md" data-testid={`row-purchase-${purchase.id}`}>
+                            <CollapsibleTrigger className="w-full">
+                              <div className="flex items-center justify-between gap-4 p-3 hover-elevate">
+                                <div className="flex items-center gap-4 flex-wrap">
+                                  <ChevronRight className="h-4 w-4 transition-transform group-data-[state=open]:rotate-90" />
+                                  <span className="font-mono font-medium">{purchase.invoiceNumber}</span>
+                                  <span className="text-muted-foreground text-sm">{formatDate(purchase.date)}</span>
+                                  <Badge variant="outline" className="text-xs">
+                                    {purchase.itemCount} item(s)
+                                  </Badge>
+                                </div>
+                                <div className="flex items-center gap-4 flex-wrap">
+                                  <span className="font-mono">{formatCurrency(purchase.totalAmount)}</span>
+                                  {balance > 0 ? (
+                                    <Badge variant="secondary" className="text-amber-600">
+                                      Due: {formatCurrency(balance)}
+                                    </Badge>
+                                  ) : (
+                                    <Badge variant="secondary" className="text-emerald-600">
+                                      Paid
+                                    </Badge>
+                                  )}
+                                </div>
+                              </div>
+                            </CollapsibleTrigger>
+                            <CollapsibleContent>
+                              <div className="border-t bg-muted/30 p-3">
+                                <p className="text-sm font-medium mb-2">Purchased Items:</p>
+                                <div className="space-y-1">
+                                  {purchase.items.map((item, idx) => (
+                                    <div key={item.id || idx} className="flex items-center justify-between gap-2 text-sm py-1 px-2 rounded bg-background">
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <span className="font-medium">
+                                          {item.product?.name || "Unknown Product"}
+                                        </span>
+                                        {item.product?.brand && (
+                                          <span className="text-muted-foreground">({item.product.brand})</span>
+                                        )}
+                                        {item.imei && (
+                                          <Badge variant="outline" className="font-mono text-xs">
+                                            IMEI: {item.imei}
+                                          </Badge>
+                                        )}
+                                      </div>
+                                      <span className="font-mono text-muted-foreground">
+                                        {formatCurrency(item.unitCost)}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            </CollapsibleContent>
+                          </div>
+                        </Collapsible>
+                      );
+                    })}
+                  </div>
                 </ScrollArea>
               )}
             </CardContent>
