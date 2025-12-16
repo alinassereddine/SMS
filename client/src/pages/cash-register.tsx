@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { CreditCard, DollarSign, Clock, CheckCircle, AlertCircle, Play, Square, MoreHorizontal, Pencil, Download } from "lucide-react";
+import { CreditCard, DollarSign, Clock, CheckCircle, AlertCircle, Play, Square, MoreHorizontal, Pencil, Download, Plus, Minus, ArrowDownCircle, ArrowUpCircle, History } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { DataTable, Column } from "@/components/data-table";
 import { StatusBadge } from "@/components/status-badge";
@@ -16,7 +16,6 @@ import {
 } from "@/components/ui/dialog";
 import { CurrencyInput } from "@/components/currency-input";
 import { Textarea } from "@/components/ui/textarea";
-import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
 import {
   DropdownMenu,
@@ -24,12 +23,26 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { formatCurrency, formatDateTime, generateSessionNumber } from "@/lib/utils";
 import type { CashRegisterSession } from "@shared/schema";
 import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
 
 function exportSessionToCSV(session: CashRegisterSession) {
   const formatValue = (v: any) => v === null || v === undefined ? "" : String(v);
@@ -74,12 +87,17 @@ function exportSessionToCSV(session: CashRegisterSession) {
 
 interface SessionTransaction {
   id: string;
-  type: 'sale' | 'payment' | 'expense';
+  type: 'sale' | 'payment' | 'expense' | 'opening' | 'manual_inflow' | 'manual_outflow';
   description: string;
   amount: number;
   cashAmount: number;
   paymentMethod: string;
   date: string;
+  customerName?: string;
+  supplierName?: string;
+  products?: string;
+  itemCount?: number;
+  note?: string;
 }
 
 interface ActiveSessionWithDetails extends CashRegisterSession {
@@ -94,14 +112,18 @@ interface ActiveSessionWithDetails extends CashRegisterSession {
   };
 }
 
+type CategoryFilter = "all" | "sale" | "payment" | "expense" | "opening" | "manual_inflow" | "manual_outflow";
+
 export default function CashRegister() {
   const [isOpenDialogOpen, setIsOpenDialogOpen] = useState(false);
   const [isCloseDialogOpen, setIsCloseDialogOpen] = useState(false);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [openingBalance, setOpeningBalance] = useState(0);
   const [actualBalance, setActualBalance] = useState(0);
   const [closeNotes, setCloseNotes] = useState("");
   const [editSession, setEditSession] = useState<CashRegisterSession | null>(null);
   const [editDate, setEditDate] = useState<string>("");
+  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
   const { toast } = useToast();
 
   const { data: sessions = [], isLoading } = useQuery<CashRegisterSession[]>({
@@ -187,7 +209,7 @@ export default function CashRegister() {
     editDateMutation.mutate({ id: editSession.id, openedAt: editDate });
   };
 
-  const columns: Column<CashRegisterSession>[] = [
+  const historyColumns: Column<CashRegisterSession>[] = [
     {
       key: "sessionNumber",
       header: "Session",
@@ -290,179 +312,348 @@ export default function CashRegister() {
     },
   ];
 
+  const getCategoryLabel = (type: string) => {
+    switch (type) {
+      case 'opening': return 'Opening Balance';
+      case 'sale': return 'Sale';
+      case 'payment': return 'Customer Payment';
+      case 'expense': return 'Expense';
+      case 'manual_inflow': return 'Manual Inflow';
+      case 'manual_outflow': return 'Manual Outflow';
+      default: return type;
+    }
+  };
+
+  const allTransactions: SessionTransaction[] = activeSession?.transactions || [];
+  
+  const openingTransaction: SessionTransaction = {
+    id: 'opening',
+    type: 'opening',
+    description: 'Starting balance',
+    amount: activeSession?.openingBalance || 0,
+    cashAmount: 0,
+    paymentMethod: '',
+    date: activeSession?.openedAt ? String(activeSession.openedAt) : new Date().toISOString(),
+    note: 'Starting balance',
+  };
+
+  const transactionsWithOpening = activeSession 
+    ? [openingTransaction, ...allTransactions]
+    : [];
+
+  const filteredTransactions = categoryFilter === "all"
+    ? transactionsWithOpening
+    : transactionsWithOpening.filter(tx => tx.type === categoryFilter);
+
+  let runningBalance = activeSession?.openingBalance || 0;
+  const transactionsWithBalance = filteredTransactions.map((tx) => {
+    if (tx.type === 'opening') {
+      // Opening balance row - balance stays at opening amount
+    } else {
+      runningBalance += tx.cashAmount;
+    }
+    return { ...tx, balance: runningBalance };
+  });
+
+  const totalInflows = allTransactions
+    .filter(tx => tx.cashAmount > 0)
+    .reduce((sum, tx) => sum + tx.cashAmount, 0);
+
+  const totalOutflows = allTransactions
+    .filter(tx => tx.cashAmount < 0)
+    .reduce((sum, tx) => sum + Math.abs(tx.cashAmount), 0);
+
+  const filteredBalance = transactionsWithBalance.length > 0
+    ? transactionsWithBalance[transactionsWithBalance.length - 1].balance
+    : activeSession?.openingBalance || 0;
+
+  const formatDate = (dateStr: string | Date) => {
+    const date = typeof dateStr === 'string' ? new Date(dateStr) : dateStr;
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  };
+
+  const formatTime = (dateStr: string | Date) => {
+    const date = typeof dateStr === 'string' ? new Date(dateStr) : dateStr;
+    return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+  };
+
   return (
     <div className="space-y-6">
-      <PageHeader title="Cash Register" description="Manage cash register sessions">
-        <Button 
-          onClick={handleOpenClose}
-          variant={activeSession ? "destructive" : "default"}
-          data-testid="button-toggle-session"
-        >
-          {activeSession ? (
-            <>
-              <Square className="h-4 w-4 mr-2" />
-              Close Session
-            </>
-          ) : (
-            <>
-              <Play className="h-4 w-4 mr-2" />
-              Open Session
-            </>
-          )}
-        </Button>
-      </PageHeader>
+      {activeSession ? (
+        <>
+          <PageHeader 
+            title={`Cash Register - ${formatDate(activeSession.openedAt)}`} 
+            description={`Session ${activeSession.sessionNumber}`}
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="outline" onClick={() => setIsHistoryOpen(true)} data-testid="button-view-history">
+                <History className="h-4 w-4 mr-2" />
+                View History
+              </Button>
+              <Button variant="outline" onClick={() => handleOpenEditDate(activeSession)} data-testid="button-edit-date">
+                <Pencil className="h-4 w-4 mr-2" />
+                Edit Open Date
+              </Button>
+              <Button 
+                onClick={handleOpenClose}
+                variant="destructive"
+                data-testid="button-close-session"
+              >
+                <Square className="h-4 w-4 mr-2" />
+                Close Register
+              </Button>
+            </div>
+          </PageHeader>
 
-      {activeSession && (
-        <Card className="border-emerald-500/50 bg-emerald-500/5">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-              Active Session
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-4">
-              <div>
-                <p className="text-xs text-muted-foreground uppercase">Session Number</p>
-                <p className="font-mono font-medium">{activeSession.sessionNumber}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground uppercase">Opened At</p>
-                <p className="font-medium">{formatDateTime(activeSession.openedAt)}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground uppercase">Opening Balance</p>
-                <p className="font-mono font-medium">{formatCurrency(activeSession.openingBalance)}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground uppercase">Expected Balance</p>
-                <p className="font-mono font-medium text-emerald-600 dark:text-emerald-400">
+          <div className="grid gap-4 md:grid-cols-4">
+            <Card>
+              <CardContent className="pt-6">
+                <p className="text-sm font-medium mb-1">Opening Balance</p>
+                <p className="text-2xl font-bold font-mono">
+                  {formatCurrency(activeSession.openingBalance)}
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6">
+                <p className="text-sm font-medium mb-1">Total Inflows</p>
+                <p className="text-2xl font-bold font-mono text-emerald-600 dark:text-emerald-400">
+                  {formatCurrency(totalInflows)}
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6">
+                <p className="text-sm font-medium mb-1">Total Outflows</p>
+                <p className="text-2xl font-bold font-mono text-red-600 dark:text-red-400">
+                  {formatCurrency(totalOutflows)}
+                </p>
+              </CardContent>
+            </Card>
+            <Card className="bg-foreground text-background">
+              <CardContent className="pt-6">
+                <p className="text-sm font-medium mb-1">Current Balance</p>
+                <p className="text-2xl font-bold font-mono">
                   {formatCurrency(activeSession.expectedBalance || activeSession.openingBalance)}
                 </p>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <h2 className="text-xl font-semibold">Transactions</h2>
+              <div className="flex flex-wrap items-center gap-2">
+                <Select value={categoryFilter} onValueChange={(v) => setCategoryFilter(v as CategoryFilter)}>
+                  <SelectTrigger className="w-44" data-testid="select-category-filter">
+                    <SelectValue placeholder="All Categories" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Categories</SelectItem>
+                    <SelectItem value="opening">Opening Balance</SelectItem>
+                    <SelectItem value="sale">Sales</SelectItem>
+                    <SelectItem value="payment">Customer Payments</SelectItem>
+                    <SelectItem value="expense">Expenses</SelectItem>
+                    <SelectItem value="manual_inflow">Manual Inflows</SelectItem>
+                    <SelectItem value="manual_outflow">Manual Outflows</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button variant="outline" size="icon" onClick={() => exportSessionToCSV(activeSession)} data-testid="button-export-current">
+                  <Download className="h-4 w-4" />
+                </Button>
               </div>
             </div>
-            
-            {activeSession.summary && (
-              <div className="pt-4 border-t" data-testid="section-cash-flow-summary">
-                <p className="text-sm font-medium mb-3">Cash Flow Summary</p>
-                <div className="grid gap-4 md:grid-cols-3">
-                  <div className="flex items-center justify-between p-3 bg-background rounded-lg" data-testid="summary-sales">
-                    <span className="text-sm text-muted-foreground">Sales ({activeSession.summary.salesCount})</span>
-                    <span className="font-mono font-medium text-emerald-600 dark:text-emerald-400">
-                      +{formatCurrency(activeSession.summary.salesCash)}
-                    </span>
+
+            <Card>
+              <CardContent className="pt-4 pb-4">
+                <p className="text-sm text-muted-foreground mb-1">Filtered Balance</p>
+                <p className="text-xs text-muted-foreground mb-2">Opening balance plus all filtered inflows/outflows</p>
+                <p className="text-2xl font-bold font-mono">{formatCurrency(filteredBalance)}</p>
+              </CardContent>
+            </Card>
+
+            <div className="border rounded-lg overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-24">Date</TableHead>
+                    <TableHead className="w-20">Time</TableHead>
+                    <TableHead className="w-32">Category</TableHead>
+                    <TableHead>Customer / Supplier</TableHead>
+                    <TableHead>Products</TableHead>
+                    <TableHead className="w-16 text-center">Items</TableHead>
+                    <TableHead>Note</TableHead>
+                    <TableHead className="w-28 text-right">Amount</TableHead>
+                    <TableHead className="w-28 text-right">Balance</TableHead>
+                    <TableHead className="w-20"></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {transactionsWithBalance.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
+                        No transactions recorded yet
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    transactionsWithBalance.map((tx) => (
+                      <TableRow key={tx.id} data-testid={`row-transaction-${tx.id}`}>
+                        <TableCell className="text-sm">{formatDate(tx.date)}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground">{formatTime(tx.date)}</TableCell>
+                        <TableCell>
+                          <span className="text-sm">{getCategoryLabel(tx.type)}</span>
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          {tx.customerName || tx.supplierName || "—"}
+                        </TableCell>
+                        <TableCell className="text-sm max-w-[200px] truncate">
+                          {tx.products || "—"}
+                        </TableCell>
+                        <TableCell className="text-center text-sm text-muted-foreground">
+                          {tx.itemCount ? `${tx.itemCount} item${tx.itemCount > 1 ? 's' : ''}` : "—"}
+                        </TableCell>
+                        <TableCell className="text-sm max-w-[200px] truncate">
+                          {tx.note || tx.description || "—"}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {tx.type === 'opening' ? (
+                            <span className="font-mono text-sm text-muted-foreground">
+                              {formatCurrency(0)}
+                            </span>
+                          ) : (
+                            <span className={`font-mono text-sm font-medium ${
+                              tx.cashAmount >= 0 
+                                ? "text-emerald-600 dark:text-emerald-400" 
+                                : "text-red-600 dark:text-red-400"
+                            }`}>
+                              {tx.cashAmount >= 0 ? "+" : ""}{formatCurrency(tx.cashAmount)}
+                            </span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <span className="font-mono text-sm font-medium">
+                            {formatCurrency(tx.balance)}
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          {tx.type !== 'opening' && (
+                            <div className="flex items-center gap-1">
+                              <Button variant="ghost" size="icon" className="h-8 w-8" data-testid={`button-edit-tx-${tx.id}`}>
+                                <Pencil className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+        </>
+      ) : (
+        <>
+          <PageHeader title="Cash Register" description="Manage cash register sessions">
+            <div className="flex items-center gap-2">
+              <Button variant="outline" onClick={() => setIsHistoryOpen(true)} data-testid="button-view-history">
+                <History className="h-4 w-4 mr-2" />
+                View History
+              </Button>
+              <Button 
+                onClick={handleOpenClose}
+                data-testid="button-open-session"
+              >
+                <Play className="h-4 w-4 mr-2" />
+                Open Session
+              </Button>
+            </div>
+          </PageHeader>
+
+          <div className="grid gap-4 md:grid-cols-3">
+            <Card>
+              <CardContent className="pt-6">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-500/10">
+                    <Clock className="h-5 w-5 text-blue-600 dark:text-blue-400" />
                   </div>
-                  <div className="flex items-center justify-between p-3 bg-background rounded-lg" data-testid="summary-payments">
-                    <span className="text-sm text-muted-foreground">Payments ({activeSession.summary.paymentsCount})</span>
-                    <span className={`font-mono font-medium ${activeSession.summary.paymentsCash >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
-                      {activeSession.summary.paymentsCash >= 0 ? '+' : ''}{formatCurrency(activeSession.summary.paymentsCash)}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between p-3 bg-background rounded-lg" data-testid="summary-expenses">
-                    <span className="text-sm text-muted-foreground">Expenses ({activeSession.summary.expensesCount})</span>
-                    <span className="font-mono font-medium text-red-600 dark:text-red-400">
-                      -{formatCurrency(activeSession.summary.expensesCash)}
-                    </span>
+                  <div>
+                    <div className="text-2xl font-bold">{sessions.length}</div>
+                    <p className="text-xs text-muted-foreground">Total Sessions</p>
                   </div>
                 </div>
-              </div>
-            )}
-
-            {activeSession.transactions && activeSession.transactions.length > 0 && (
-              <div className="pt-4 border-t" data-testid="section-transactions">
-                <p className="text-sm font-medium mb-3">Session Transactions ({activeSession.transactions.length})</p>
-                <ScrollArea className="h-48">
-                  <div className="space-y-2">
-                    {activeSession.transactions.map((tx) => (
-                      <div key={tx.id} className="flex items-center justify-between p-2 bg-background rounded-lg" data-testid={`row-transaction-${tx.id}`}>
-                        <div className="flex items-center gap-3">
-                          <Badge 
-                            variant={tx.type === 'sale' ? 'default' : tx.type === 'payment' ? 'secondary' : 'outline'}
-                            className="text-xs"
-                          >
-                            {tx.type}
-                          </Badge>
-                          <div>
-                            <p className="text-sm font-medium">{tx.description}</p>
-                            <p className="text-xs text-muted-foreground">{tx.paymentMethod}</p>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <p className={`font-mono text-sm font-medium ${tx.cashAmount >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
-                            {tx.cashAmount >= 0 ? '+' : ''}{formatCurrency(tx.cashAmount)}
-                          </p>
-                          <p className="text-xs text-muted-foreground">{formatDateTime(tx.date)}</p>
-                        </div>
-                      </div>
-                    ))}
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500/10">
+                    <CheckCircle className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
                   </div>
-                </ScrollArea>
+                  <div>
+                    <div className="text-2xl font-bold">
+                      {sessions.filter(s => s.status === "closed" && s.difference === 0).length}
+                    </div>
+                    <p className="text-xs text-muted-foreground">Balanced Sessions</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-500/10">
+                    <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold">
+                      {sessions.filter(s => s.status === "closed" && s.difference !== 0).length}
+                    </div>
+                    <p className="text-xs text-muted-foreground">With Discrepancy</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card className="border-dashed">
+            <CardContent className="pt-6 pb-6">
+              <div className="flex flex-col items-center justify-center text-center py-8">
+                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted mb-4">
+                  <CreditCard className="h-8 w-8 text-muted-foreground" />
+                </div>
+                <h3 className="text-lg font-semibold mb-2">No Active Session</h3>
+                <p className="text-sm text-muted-foreground mb-4 max-w-md">
+                  Open a cash register session to start recording sales, payments, and expenses.
+                </p>
+                <Button onClick={handleOpenClose} data-testid="button-open-session-cta">
+                  <Play className="h-4 w-4 mr-2" />
+                  Open Session
+                </Button>
               </div>
-            )}
-            
-            {(!activeSession.transactions || activeSession.transactions.length === 0) && (
-              <div className="pt-4 border-t">
-                <p className="text-sm text-muted-foreground text-center py-4">No transactions recorded in this session yet</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </>
       )}
 
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-500/10">
-                <Clock className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-              </div>
-              <div>
-                <div className="text-2xl font-bold">{sessions.length}</div>
-                <p className="text-xs text-muted-foreground">Total Sessions</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500/10">
-                <CheckCircle className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
-              </div>
-              <div>
-                <div className="text-2xl font-bold">
-                  {sessions.filter(s => s.status === "closed" && s.difference === 0).length}
-                </div>
-                <p className="text-xs text-muted-foreground">Balanced Sessions</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-500/10">
-                <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-              </div>
-              <div>
-                <div className="text-2xl font-bold">
-                  {sessions.filter(s => s.status === "closed" && s.difference !== 0).length}
-                </div>
-                <p className="text-xs text-muted-foreground">With Discrepancy</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <DataTable
-        columns={columns}
-        data={sessions}
-        isLoading={isLoading}
-        emptyMessage="No sessions found"
-        emptyDescription="Open your first cash register session."
-        getRowKey={(s) => s.id}
-      />
+      <Dialog open={isHistoryOpen} onOpenChange={setIsHistoryOpen}>
+        <DialogContent className="sm:max-w-4xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Session History</DialogTitle>
+            <DialogDescription>
+              View all past cash register sessions
+            </DialogDescription>
+          </DialogHeader>
+          <DataTable
+            columns={historyColumns}
+            data={sessions}
+            isLoading={isLoading}
+            emptyMessage="No sessions found"
+            emptyDescription="Open your first cash register session."
+            getRowKey={(s) => s.id}
+          />
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={isOpenDialogOpen} onOpenChange={setIsOpenDialogOpen}>
         <DialogContent className="sm:max-w-md">
