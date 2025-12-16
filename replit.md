@@ -43,7 +43,7 @@ Preferred communication style: Simple, everyday language.
 - **Items**: Individual inventory units with IMEI tracking, purchase/sale lifecycle
 - **Customers/Suppliers**: Contact management with balance tracking
 - **Sales/Purchases**: Transaction records with line items
-- **Payments**: Payment records linked to customers or suppliers
+- **Payments**: Payment and refund records linked to customers or suppliers with transaction type tracking
 - **Cash Register Sessions**: Daily cash management with opening/closing balances
 - **Expenses**: Business expense tracking by category
 - **Currencies**: Multi-currency support with exchange rate management
@@ -58,6 +58,11 @@ Preferred communication style: Simple, everyday language.
 - All sales and purchases require an open cash register session
 - Cash register must be opened before creating transactions
 
+#### Payment Types
+- **Payment**: Money flowing in normal direction (customer pays us, we pay supplier)
+- **Refund**: Money flowing in reverse direction (we refund customer, supplier refunds us)
+- Balance adjustments are calculated based on transaction type
+
 #### Deletion Safeguards
 - **Purchase Invoice Delete**: 
   - Blocked if any items from the purchase have been sold
@@ -69,6 +74,10 @@ Preferred communication style: Simple, everyday language.
   - Blocked if customer balance would go negative (indicating payments were made)
   - Returns items to "available" status and reverses customer balance
 
+#### Date Editing
+- Sales, purchases, payments, and cash register sessions all support date editing
+- Payment amount changes automatically adjust entity balances
+
 ### Multi-Currency Support
 The system supports multiple currencies with exchange rate conversion:
 - **Currency Schema**: `currencies` table with code, name, symbol, exchangeRate (fixed-point 10000 = 1.0), decimals, isDefault
@@ -76,6 +85,18 @@ The system supports multiple currencies with exchange rate conversion:
 - **CurrencyProvider**: React context providing `formatCurrency(cents)` and `convertCurrency(cents, fromCode, toCode)`
 - **Conversion Logic**: `result = cents * toCurrency.exchangeRate / fromCurrency.exchangeRate`
 - **Settings Page**: Currency tab for CRUD operations on currencies, including setting default currency
+
+### Archive Management
+- Soft delete (archive) for customers, suppliers, sales, and purchases
+- Archive tab in Settings page shows all archived records
+- Restore functionality to bring archived records back
+- Hard delete option for permanent removal
+
+### Balance Ledger
+- Chronological view of all transactions affecting entity balances
+- Customer ledger: Sales (debit), Payments (credit), Refunds (debit)
+- Supplier ledger: Purchases (debit), Payments (credit), Refunds (credit)
+- Running balance calculation with proper sign indicators
 
 ## External Dependencies
 
@@ -108,3 +129,28 @@ The system supports multiple currencies with exchange rate conversion:
 - **tsx**: TypeScript execution for Node.js
 - **drizzle-kit**: Database migration tooling
 - **@replit/vite-plugin-***: Replit-specific development enhancements
+
+## Key Files
+
+### Schema and Types
+- `shared/schema.ts` - Database schema definitions and Zod validation schemas
+- `shared/types.ts` - Additional TypeScript type definitions
+
+### Backend
+- `server/routes.ts` - All API route definitions
+- `server/storage.ts` - Database access layer (IStorage interface and implementation)
+- `server/index.ts` - Server entry point
+
+### Frontend Pages
+- `client/src/pages/dashboard.tsx` - Main dashboard
+- `client/src/pages/products.tsx` - Product catalog management
+- `client/src/pages/inventory.tsx` - Inventory item listing
+- `client/src/pages/customers.tsx` - Customer management
+- `client/src/pages/customer-details.tsx` - Customer detail view with ledger
+- `client/src/pages/suppliers.tsx` - Supplier management
+- `client/src/pages/supplier-details.tsx` - Supplier detail view with ledger
+- `client/src/pages/sales.tsx` - Sales management
+- `client/src/pages/purchases.tsx` - Purchase invoice management
+- `client/src/pages/payments.tsx` - Payment recording
+- `client/src/pages/cash-register.tsx` - Cash register session management
+- `client/src/pages/settings.tsx` - App settings and archive management

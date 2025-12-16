@@ -326,15 +326,19 @@ export async function registerRoutes(
         }
       }
 
-      // Add payments as credits (reduces what customer owes)
+      // Add payments/refunds (payments reduce what customer owes, refunds increase)
       for (const payment of payments) {
+        const isRefund = payment.transactionType === "refund";
+        const typeLabel = isRefund ? "Refund" : "Payment";
         ledgerEntries.push({
           id: `payment-${payment.id}`,
           date: String(payment.date),
           type: "payment",
-          description: `Payment - ${payment.paymentMethod}${payment.reference ? ` (${payment.reference})` : ""}`,
-          debit: 0,
-          credit: payment.amount,
+          description: `${typeLabel} - ${payment.paymentMethod}${payment.reference ? ` (${payment.reference})` : ""}`,
+          // Payment from customer = credit (reduces balance)
+          // Refund to customer = debit (increases balance - we give money back, they owe more)
+          debit: isRefund ? payment.amount : 0,
+          credit: isRefund ? 0 : payment.amount,
           referenceId: payment.id,
         });
       }
@@ -505,13 +509,17 @@ export async function registerRoutes(
         }
       }
 
-      // Add payments as credits (reduces what we owe)
+      // Add payments/refunds
+      // Payment to supplier = credit (reduces what we owe)
+      // Refund from supplier = also credit (they return money, reduces what we owe)
       for (const payment of payments) {
+        const isRefund = payment.transactionType === "refund";
+        const typeLabel = isRefund ? "Refund" : "Payment";
         ledgerEntries.push({
           id: `payment-${payment.id}`,
           date: String(payment.date),
           type: "payment",
-          description: `Payment - ${payment.paymentMethod}${payment.reference ? ` (${payment.reference})` : ""}`,
+          description: `${typeLabel} - ${payment.paymentMethod}${payment.reference ? ` (${payment.reference})` : ""}`,
           debit: 0,
           credit: payment.amount,
           referenceId: payment.id,
