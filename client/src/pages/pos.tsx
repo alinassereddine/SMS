@@ -229,13 +229,13 @@ export default function POS() {
             <Badge variant="secondary">{cart.length} item{cart.length !== 1 ? "s" : ""}</Badge>
           </div>
 
-          <Select value={customerId} onValueChange={setCustomerId}>
+          <Select value={customerId || "walk-in"} onValueChange={(val) => setCustomerId(val === "walk-in" ? "" : val)}>
             <SelectTrigger className="mt-2" data-testid="select-pos-customer">
               <User className="h-4 w-4 mr-2" />
               <SelectValue placeholder="Walk-in Customer" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">Walk-in Customer</SelectItem>
+              <SelectItem value="walk-in">Walk-in Customer</SelectItem>
               {customers.map((customer) => (
                 <SelectItem key={customer.id} value={customer.id}>
                   {customer.name}
