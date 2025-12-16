@@ -1841,14 +1841,26 @@ export async function registerRoutes(
           date: s.date,
           status: s.paymentType === "full" ? "paid" : "partial",
         })),
-        ...payments.map(p => ({ 
-          type: "payment" as const, 
-          id: p.id,
-          description: `Payment ${p.type === "customer" ? `from ${customerMap.get(p.entityId) || "Customer"}` : `to ${supplierMap.get(p.entityId) || "Supplier"}`}`,
-          amount: p.amount,
-          date: p.date,
-          status: "completed",
-        })),
+        ...payments.map(p => {
+          const isRefund = p.transactionType === "refund";
+          const entityName = p.type === "customer" 
+            ? customerMap.get(p.entityId) || "Customer"
+            : supplierMap.get(p.entityId) || "Supplier";
+          const actionWord = isRefund ? "Refund" : "Payment";
+          const directionWord = p.type === "customer"
+            ? (isRefund ? "to" : "from")
+            : (isRefund ? "from" : "to");
+          return {
+            type: "payment" as const,
+            id: p.id,
+            description: `${actionWord} ${directionWord} ${entityName}`,
+            amount: p.amount,
+            date: p.date,
+            status: "completed",
+            transactionType: p.transactionType || "payment",
+            paymentEntityType: p.type,
+          };
+        }),
         ...purchases.map(p => ({ 
           type: "purchase" as const, 
           id: p.id,

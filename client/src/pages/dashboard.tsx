@@ -50,6 +50,8 @@ interface RecentActivity {
   amount: number;
   date: string;
   status: string;
+  transactionType?: "payment" | "refund";
+  paymentEntityType?: "customer" | "supplier";
 }
 
 interface WeeklySalesData {
@@ -336,9 +338,26 @@ export default function Dashboard() {
                           ? "text-emerald-600 dark:text-emerald-400"
                           : activity.type === "purchase"
                           ? "text-red-600 dark:text-red-400"
+                          : activity.type === "payment"
+                          ? (() => {
+                              const isRefund = activity.transactionType === "refund";
+                              const isCustomer = activity.paymentEntityType === "customer";
+                              // Customer payment = + (we receive), Customer refund = - (we give back)
+                              // Supplier payment = - (we pay), Supplier refund = + (we receive back)
+                              const isPositive = isCustomer ? !isRefund : isRefund;
+                              return isPositive 
+                                ? "text-emerald-600 dark:text-emerald-400" 
+                                : "text-red-600 dark:text-red-400";
+                            })()
                           : ""
                       }`}>
-                        {activity.type === "sale" ? "+" : activity.type === "purchase" ? "-" : ""}
+                        {activity.type === "sale" ? "+" : activity.type === "purchase" ? "-" : 
+                          activity.type === "payment" ? (() => {
+                            const isRefund = activity.transactionType === "refund";
+                            const isCustomer = activity.paymentEntityType === "customer";
+                            const isPositive = isCustomer ? !isRefund : isRefund;
+                            return isPositive ? "+" : "-";
+                          })() : ""}
                         {formatCurrency(activity.amount)}
                       </p>
                     </div>
