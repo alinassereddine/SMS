@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, FileText, MoreHorizontal, Eye, Printer, Trash2, Package, AlertTriangle, Pencil } from "lucide-react";
+import { Plus, FileText, MoreHorizontal, Eye, Printer, Trash2, Package, AlertTriangle, Pencil, X, Search } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { DataTable, Column } from "@/components/data-table";
 import { SearchInput } from "@/components/search-input";
@@ -8,6 +8,7 @@ import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Dialog,
   DialogContent,
@@ -64,14 +65,29 @@ interface ItemEntry {
   unitPrice: number;
 }
 
+type EditItem = {
+  itemId?: string;
+  productId: string;
+  imei: string;
+  unitPrice: number;
+  productName: string;
+};
+
 export default function Purchases() {
   const [search, setSearch] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<PurchaseInvoiceWithSupplier | null>(null);
   const [deleteConfirmInvoice, setDeleteConfirmInvoice] = useState<PurchaseInvoiceWithSupplier | null>(null);
   const [editInvoice, setEditInvoice] = useState<PurchaseInvoiceWithSupplier | null>(null);
+  const [editItems, setEditItems] = useState<EditItem[]>([]);
+  const [editSupplierId, setEditSupplierId] = useState<string>("");
   const [editDiscount, setEditDiscount] = useState(0);
+  const [editPaidAmount, setEditPaidAmount] = useState(0);
   const [editNotes, setEditNotes] = useState("");
+  const [showAddItem, setShowAddItem] = useState(false);
+  const [newItemProductId, setNewItemProductId] = useState("");
+  const [newItemImei, setNewItemImei] = useState("");
+  const [newItemCost, setNewItemCost] = useState(0);
   const [itemEntries, setItemEntries] = useState<ItemEntry[]>([{ productId: "", imei: "", unitPrice: 0 }]);
   const { toast } = useToast();
 
@@ -154,11 +170,12 @@ export default function Purchases() {
   });
 
   const editMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: { discountAmount?: number; notes?: string | null } }) => {
-      return apiRequest("PATCH", `/api/purchase-invoices/${id}`, data);
+    mutationFn: async ({ id, data }: { id: string; data: any }) => {
+      return apiRequest("PUT", `/api/purchase-invoices/${id}`, data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/purchase-invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/items"] });
       queryClient.invalidateQueries({ queryKey: ["/api/suppliers"] });
       setEditInvoice(null);
       toast({ title: "Purchase invoice updated successfully" });
@@ -170,20 +187,81 @@ export default function Purchases() {
 
   const handleOpenEdit = (invoice: PurchaseInvoiceWithSupplier) => {
     setEditInvoice(invoice);
+    setEditItems(
+      invoice.items?.map((item) => ({
+        itemId: item.itemId,
+        productId: item.productId,
+        imei: item.imei || "",
+        unitPrice: item.unitPrice || 0,
+        productName: item.product?.name || "Unknown",
+      })) || []
+    );
+    setEditSupplierId(invoice.supplierId);
     setEditDiscount(invoice.discountAmount || 0);
+    setEditPaidAmount(invoice.paidAmount || 0);
     setEditNotes(invoice.notes || "");
+    setShowAddItem(false);
+    setNewItemProductId("");
+    setNewItemImei("");
+    setNewItemCost(0);
+  };
+
+  const handleRemoveEditItem = (index: number) => {
+    setEditItems((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleUpdateEditItemCost = (index: number, newCost: number) => {
+    setEditItems((prev) =>
+      prev.map((item, i) => (i === index ? { ...item, unitPrice: newCost } : item))
+    );
+  };
+
+  const handleAddNewItem = () => {
+    if (!newItemProductId || !newItemImei || newItemCost <= 0) {
+      toast({ title: "Please fill all item fields", variant: "destructive" });
+      return;
+    }
+    const product = products.find((p) => p.id === newItemProductId);
+    setEditItems((prev) => [
+      ...prev,
+      {
+        productId: newItemProductId,
+        imei: newItemImei,
+        unitPrice: newItemCost,
+        productName: product?.name || "Unknown",
+      },
+    ]);
+    setShowAddItem(false);
+    setNewItemProductId("");
+    setNewItemImei("");
+    setNewItemCost(0);
   };
 
   const handleSaveEdit = () => {
-    if (!editInvoice) return;
+    if (!editInvoice || editItems.length === 0) {
+      toast({ title: "Purchase must have at least one item", variant: "destructive" });
+      return;
+    }
     editMutation.mutate({
       id: editInvoice.id,
       data: {
+        supplierId: editSupplierId,
         discountAmount: editDiscount,
+        paidAmount: editPaidAmount,
         notes: editNotes || null,
+        items: editItems.map((item) => ({
+          itemId: item.itemId,
+          productId: item.productId,
+          imei: item.imei,
+          unitPrice: item.unitPrice,
+        })),
       },
     });
   };
+
+  const editSubtotal = editItems.reduce((sum, i) => sum + i.unitPrice, 0);
+  const editTotal = Math.max(0, editSubtotal - editDiscount);
+  const editBalance = Math.max(0, editTotal - editPaidAmount);
 
   const handleSubmit = (data: PurchaseFormValues) => {
     createMutation.mutate(data);
@@ -581,7 +659,7 @@ export default function Purchases() {
       </Dialog>
 
       <Dialog open={!!editInvoice} onOpenChange={() => setEditInvoice(null)}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit Purchase Invoice</DialogTitle>
             <DialogDescription>
@@ -590,21 +668,157 @@ export default function Purchases() {
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>Discount</Label>
-              <CurrencyInput 
-                value={editDiscount} 
-                onChange={setEditDiscount} 
-              />
-              {editInvoice && editDiscount !== (editInvoice.discountAmount || 0) && (
-                <p className="text-xs text-muted-foreground">
-                  New total: {formatCurrency(editInvoice.subtotal - editDiscount)}
-                </p>
-              )}
+              <Label>Supplier</Label>
+              <Select value={editSupplierId} onValueChange={setEditSupplierId}>
+                <SelectTrigger data-testid="select-edit-supplier">
+                  <SelectValue placeholder="Select supplier" />
+                </SelectTrigger>
+                <SelectContent>
+                  {suppliers.map((supplier) => (
+                    <SelectItem key={supplier.id} value={supplier.id}>
+                      {supplier.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
+
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label>Items ({editItems.length})</Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowAddItem(!showAddItem)}
+                  data-testid="button-toggle-add-item"
+                >
+                  {showAddItem ? (
+                    <>
+                      <X className="h-3 w-3 mr-1" />
+                      Cancel
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="h-3 w-3 mr-1" />
+                      Add Item
+                    </>
+                  )}
+                </Button>
+              </div>
+
+              {showAddItem && (
+                <Card className="p-3">
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-3 gap-2">
+                      <Select value={newItemProductId} onValueChange={setNewItemProductId}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Product" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {products.map((p) => (
+                            <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Input
+                        placeholder="IMEI"
+                        value={newItemImei}
+                        onChange={(e) => setNewItemImei(e.target.value)}
+                        className="font-mono"
+                      />
+                      <CurrencyInput
+                        value={newItemCost}
+                        onChange={setNewItemCost}
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={handleAddNewItem}
+                      className="w-full"
+                      data-testid="button-confirm-add-item"
+                    >
+                      Add to Purchase
+                    </Button>
+                  </div>
+                </Card>
+              )}
+
+              <ScrollArea className="max-h-[200px]">
+                <div className="space-y-2">
+                  {editItems.map((item, index) => (
+                    <div
+                      key={item.itemId || `new-${index}`}
+                      className="flex items-center justify-between p-3 rounded-lg bg-muted/50"
+                    >
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
+                        <Package className="h-4 w-4 text-muted-foreground shrink-0" />
+                        <div className="min-w-0">
+                          <p className="font-medium truncate">{item.productName}</p>
+                          <p className="text-xs text-muted-foreground font-mono truncate">
+                            {item.imei}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <CurrencyInput
+                          value={item.unitPrice}
+                          onChange={(v) => handleUpdateEditItemCost(index, v)}
+                          className="w-28"
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleRemoveEditItem(index)}
+                          disabled={editItems.length === 1}
+                          data-testid={`button-remove-item-${index}`}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+            </div>
+
+            <Separator />
+
+            <div className="space-y-2">
+              <div className="flex justify-between items-center">
+                <span className="text-sm font-medium">Subtotal</span>
+                <span className="font-mono font-bold">{formatCurrency(editSubtotal)}</span>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Discount</Label>
+              <CurrencyInput value={editDiscount} onChange={setEditDiscount} />
+            </div>
+
+            <div className="flex justify-between items-center">
+              <span className="text-sm font-medium">Total</span>
+              <span className="font-mono font-bold text-lg">{formatCurrency(editTotal)}</span>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Amount Paid</Label>
+              <CurrencyInput value={editPaidAmount} onChange={setEditPaidAmount} />
+            </div>
+
+            {editBalance > 0 && (
+              <div className="flex justify-between items-center text-red-600 dark:text-red-400">
+                <span className="text-sm font-medium">Balance Due</span>
+                <span className="font-mono font-bold">{formatCurrency(editBalance)}</span>
+              </div>
+            )}
+
             <div className="space-y-2">
               <Label>Notes</Label>
-              <Textarea 
-                value={editNotes} 
+              <Textarea
+                value={editNotes}
                 onChange={(e) => setEditNotes(e.target.value)}
                 placeholder="Add notes..."
                 data-testid="input-edit-notes"
@@ -615,9 +829,9 @@ export default function Purchases() {
             <Button variant="outline" onClick={() => setEditInvoice(null)}>
               Cancel
             </Button>
-            <Button 
+            <Button
               onClick={handleSaveEdit}
-              disabled={editMutation.isPending}
+              disabled={editMutation.isPending || editItems.length === 0}
               data-testid="button-save-edit"
             >
               {editMutation.isPending ? "Saving..." : "Save Changes"}

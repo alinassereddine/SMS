@@ -1312,7 +1312,7 @@ export async function registerRoutes(
       
       // Calculate new totals
       const discountAmount = data.discountAmount ?? invoice.discountAmount ?? 0;
-      const newSubtotal = data.items.reduce((sum, i) => sum + i.unitCost, 0);
+      const newSubtotal = data.items.reduce((sum, i) => sum + i.unitPrice, 0);
       
       if (discountAmount > newSubtotal) {
         return res.status(400).json({ error: "Discount cannot exceed subtotal" });
@@ -1354,7 +1354,7 @@ export async function registerRoutes(
           const item = await storage.getItem(itemData.itemId);
           if (item) {
             await storage.updateItem(itemData.itemId, {
-              purchasePrice: itemData.unitCost,
+              purchasePrice: itemData.unitPrice,
               imei: itemData.imei,
               productId: itemData.productId,
             });
@@ -1369,7 +1369,7 @@ export async function registerRoutes(
         const newItem = await storage.createItem({
           productId: itemData.productId,
           imei: itemData.imei,
-          purchasePrice: itemData.unitCost,
+          purchasePrice: itemData.unitPrice,
           status: "available",
           purchaseInvoiceId: invoice.id,
           supplierId: data.supplierId,
@@ -1393,9 +1393,9 @@ export async function registerRoutes(
             invoiceId: invoice.id,
             productId: itemData.productId,
             itemId: itemId,
-            quantity: 1,
-            unitCost: itemData.unitCost,
-            totalCost: itemData.unitCost,
+            imei: itemData.imei,
+            unitPrice: itemData.unitPrice,
+            totalPrice: itemData.unitPrice,
           });
         }
       }

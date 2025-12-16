@@ -288,7 +288,7 @@ export const updatePurchaseInvoiceFullSchema = z.object({
     itemId: z.string().optional(), // existing item id (for updates)
     productId: z.string(),
     imei: z.string().min(1, "IMEI is required"),
-    unitCost: z.number().min(0),
+    unitPrice: z.number().min(0),
   })).min(1, "Purchase must have at least one item"),
 });
 
