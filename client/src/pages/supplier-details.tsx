@@ -24,7 +24,7 @@ type PurchaseItem = {
   id: string;
   invoiceId: string;
   itemId: string;
-  unitCost: number;
+  unitPrice: number;
   imei: string;
   product: Product | null;
 };
@@ -280,7 +280,7 @@ export default function SupplierDetails() {
                                         )}
                                       </div>
                                       <span className="font-mono text-muted-foreground">
-                                        {formatCurrency(item.unitCost)}
+                                        {formatCurrency(item.unitPrice)}
                                       </span>
                                     </div>
                                   ))}

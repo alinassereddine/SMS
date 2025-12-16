@@ -1805,12 +1805,39 @@ export async function registerRoutes(
       const sales = await storage.getSales();
       const payments = await storage.getPayments();
       const purchases = await storage.getPurchaseInvoices();
+      const customers = await storage.getCustomers();
+      const suppliers = await storage.getSuppliers();
+
+      // Create lookup maps
+      const customerMap = new Map(customers.map(c => [c.id, c.name]));
+      const supplierMap = new Map(suppliers.map(s => [s.id, s.name]));
 
       // Get recent activity (last 10 items combined)
       const activities = [
-        ...sales.map(s => ({ type: "sale", data: s, date: s.date })),
-        ...payments.map(p => ({ type: "payment", data: p, date: p.date })),
-        ...purchases.map(p => ({ type: "purchase", data: p, date: p.date })),
+        ...sales.map(s => ({ 
+          type: "sale" as const, 
+          id: s.id,
+          description: `Sale ${s.saleNumber}${s.customerId ? ` to ${customerMap.get(s.customerId) || 'Customer'}` : ''}`,
+          amount: s.totalAmount,
+          date: s.date,
+          status: s.paymentType === "full" ? "paid" : "partial",
+        })),
+        ...payments.map(p => ({ 
+          type: "payment" as const, 
+          id: p.id,
+          description: `Payment ${p.type === "customer" ? `from ${customerMap.get(p.entityId) || "Customer"}` : `to ${supplierMap.get(p.entityId) || "Supplier"}`}`,
+          amount: p.amount,
+          date: p.date,
+          status: "completed",
+        })),
+        ...purchases.map(p => ({ 
+          type: "purchase" as const, 
+          id: p.id,
+          description: `Purchase ${p.invoiceNumber}${p.supplierId ? ` from ${supplierMap.get(p.supplierId) || 'Supplier'}` : ''}`,
+          amount: p.totalAmount,
+          date: p.date,
+          status: p.paymentType === "full" ? "paid" : "partial",
+        })),
       ]
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
         .slice(0, 10);
