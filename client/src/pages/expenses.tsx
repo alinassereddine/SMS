@@ -1,12 +1,13 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, DollarSign, MoreHorizontal, Trash2 } from "lucide-react";
+import { Plus, DollarSign, MoreHorizontal, Trash2, TrendingDown, Calendar, Wallet } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { DataTable, Column } from "@/components/data-table";
 import { SearchInput } from "@/components/search-input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from "recharts";
 import {
   Dialog,
   DialogContent,
@@ -69,14 +70,66 @@ const expenseCategories = [
   "Other",
 ];
 
+const CHART_COLORS = [
+  "hsl(var(--chart-1))",
+  "hsl(var(--chart-2))",
+  "hsl(var(--chart-3))",
+  "hsl(var(--chart-4))",
+  "hsl(var(--chart-5))",
+  "hsl(220 70% 50%)",
+  "hsl(280 70% 50%)",
+  "hsl(320 70% 50%)",
+  "hsl(40 70% 50%)",
+];
+
+type DatePreset = "today" | "week" | "month" | "year" | "all";
+
+const datePresets: { value: DatePreset; label: string }[] = [
+  { value: "today", label: "Today" },
+  { value: "week", label: "This Week" },
+  { value: "month", label: "This Month" },
+  { value: "year", label: "This Year" },
+  { value: "all", label: "All Time" },
+];
+
+function getDateRange(preset: DatePreset): { from: Date | null; to: Date } {
+  const now = new Date();
+  const to = now;
+  
+  switch (preset) {
+    case "today":
+      const today = new Date(now);
+      today.setHours(0, 0, 0, 0);
+      return { from: today, to };
+    case "week":
+      const week = new Date(now);
+      week.setDate(now.getDate() - 7);
+      return { from: week, to };
+    case "month":
+      const month = new Date(now);
+      month.setMonth(now.getMonth() - 1);
+      return { from: month, to };
+    case "year":
+      const year = new Date(now);
+      year.setFullYear(now.getFullYear() - 1);
+      return { from: year, to };
+    case "all":
+    default:
+      return { from: null, to };
+  }
+}
+
 export default function Expenses() {
   const [search, setSearch] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [datePreset, setDatePreset] = useState<DatePreset>("month");
   const { toast } = useToast();
 
   const { data: expenses = [], isLoading } = useQuery<Expense[]>({
     queryKey: ["/api/expenses"],
   });
+  
+  const { from: dateFrom } = getDateRange(datePreset);
 
   const form = useForm<ExpenseFormValues>({
     resolver: zodResolver(expenseFormSchema),
@@ -121,10 +174,37 @@ export default function Expenses() {
     createMutation.mutate(data);
   };
 
-  const filteredExpenses = expenses.filter((expense) =>
-    expense.description.toLowerCase().includes(search.toLowerCase()) ||
-    expense.category.toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredExpenses = useMemo(() => {
+    return expenses.filter((expense) => {
+      const matchesSearch = expense.description.toLowerCase().includes(search.toLowerCase()) ||
+        expense.category.toLowerCase().includes(search.toLowerCase());
+      const expenseDate = new Date(expense.date);
+      const matchesDate = !dateFrom || expenseDate >= dateFrom;
+      return matchesSearch && matchesDate;
+    });
+  }, [expenses, search, dateFrom]);
+
+  const categoryChartData = useMemo(() => {
+    const totals: Record<string, number> = {};
+    filteredExpenses.forEach(e => {
+      totals[e.category] = (totals[e.category] || 0) + e.amount;
+    });
+    return Object.entries(totals)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value);
+  }, [filteredExpenses]);
+
+  const paymentMethodData = useMemo(() => {
+    const totals: Record<string, number> = {};
+    filteredExpenses.forEach(e => {
+      const method = e.paymentMethod === "transfer" ? "Bank Transfer" : 
+                     e.paymentMethod.charAt(0).toUpperCase() + e.paymentMethod.slice(1);
+      totals[method] = (totals[method] || 0) + e.amount;
+    });
+    return Object.entries(totals)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value);
+  }, [filteredExpenses]);
 
   const columns: Column<Expense>[] = [
     {
@@ -194,15 +274,14 @@ export default function Expenses() {
     },
   ];
 
-  const totalExpenses = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
-  const categoryTotals = filteredExpenses.reduce((acc, e) => {
-    acc[e.category] = (acc[e.category] || 0) + e.amount;
-    return acc;
-  }, {} as Record<string, number>);
-
-  const topCategories = Object.entries(categoryTotals)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 3);
+  const stats = useMemo(() => {
+    const total = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
+    const avgPerExpense = filteredExpenses.length > 0 ? total / filteredExpenses.length : 0;
+    const cashTotal = filteredExpenses
+      .filter(e => e.paymentMethod === "cash")
+      .reduce((sum, e) => sum + e.amount, 0);
+    return { total, avgPerExpense, cashTotal, count: filteredExpenses.length };
+  }, [filteredExpenses]);
 
   return (
     <div className="space-y-6">
@@ -216,29 +295,158 @@ export default function Expenses() {
       <div className="grid gap-4 md:grid-cols-4">
         <Card>
           <CardContent className="pt-6">
-            <div className="text-2xl font-bold text-red-600 dark:text-red-400">
-              {formatCurrency(totalExpenses)}
+            <div className="flex items-center gap-2">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-red-500/10">
+                <TrendingDown className="h-4 w-4 text-red-600 dark:text-red-400" />
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-red-600 dark:text-red-400" data-testid="text-total-expenses">
+                  {formatCurrency(stats.total)}
+                </div>
+                <p className="text-xs text-muted-foreground">Total Expenses</p>
+              </div>
             </div>
-            <p className="text-xs text-muted-foreground">Total Expenses</p>
           </CardContent>
         </Card>
-        {topCategories.map(([category, total]) => (
-          <Card key={category}>
-            <CardContent className="pt-6">
-              <div className="text-2xl font-bold">{formatCurrency(total)}</div>
-              <p className="text-xs text-muted-foreground">{category}</p>
-            </CardContent>
-          </Card>
-        ))}
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-2">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-muted">
+                <Calendar className="h-4 w-4 text-muted-foreground" />
+              </div>
+              <div>
+                <div className="text-2xl font-bold" data-testid="text-expense-count">{stats.count}</div>
+                <p className="text-xs text-muted-foreground">Transactions</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-2">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-muted">
+                <DollarSign className="h-4 w-4 text-muted-foreground" />
+              </div>
+              <div>
+                <div className="text-2xl font-bold" data-testid="text-avg-expense">{formatCurrency(stats.avgPerExpense)}</div>
+                <p className="text-xs text-muted-foreground">Avg per Expense</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-2">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-muted">
+                <Wallet className="h-4 w-4 text-muted-foreground" />
+              </div>
+              <div>
+                <div className="text-2xl font-bold" data-testid="text-cash-expenses">{formatCurrency(stats.cashTotal)}</div>
+                <p className="text-xs text-muted-foreground">Cash Expenses</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
-      <div className="flex items-center gap-4">
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-4 space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Expenses by Category</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {categoryChartData.length > 0 ? (
+              <div className="h-[200px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={categoryChartData}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={40}
+                      outerRadius={70}
+                      paddingAngle={2}
+                      dataKey="value"
+                      label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                      labelLine={false}
+                    >
+                      {categoryChartData.map((_, index) => (
+                        <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip 
+                      formatter={(value: number) => formatCurrency(value)}
+                      contentStyle={{
+                        backgroundColor: "hsl(var(--background))",
+                        border: "1px solid hsl(var(--border))",
+                        borderRadius: "6px",
+                      }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <div className="flex h-[200px] items-center justify-center text-muted-foreground">
+                No data for selected period
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-4 space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Payment Methods</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {paymentMethodData.length > 0 ? (
+              <div className="space-y-3">
+                {paymentMethodData.map((item, index) => {
+                  const percentage = stats.total > 0 ? (item.value / stats.total) * 100 : 0;
+                  return (
+                    <div key={item.name} className="space-y-1">
+                      <div className="flex items-center justify-between gap-4 text-sm">
+                        <span>{item.name}</span>
+                        <span className="font-medium">{formatCurrency(item.value)}</span>
+                      </div>
+                      <div className="h-2 rounded-full bg-muted">
+                        <div
+                          className="h-full rounded-full transition-all"
+                          style={{
+                            width: `${percentage}%`,
+                            backgroundColor: CHART_COLORS[index % CHART_COLORS.length],
+                          }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="flex h-[200px] items-center justify-center text-muted-foreground">
+                No data for selected period
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-4">
         <SearchInput
           value={search}
           onChange={setSearch}
           placeholder="Search expenses..."
           className="max-w-sm"
         />
+        <Select value={datePreset} onValueChange={(v) => setDatePreset(v as DatePreset)}>
+          <SelectTrigger className="w-[160px]" data-testid="select-date-filter">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {datePresets.map(p => (
+              <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       <DataTable
