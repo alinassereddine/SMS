@@ -5,7 +5,7 @@ import { type Express, type Request, type Response, type NextFunction } from "ex
 import { storage } from "./storage";
 import connectPgSimple from "connect-pg-simple";
 import { pool } from "./db";
-import type { User } from "@shared/schema";
+import { hasPermission, type Permission, type UserRole } from "@shared/permissions";
 
 declare global {
   namespace Express {
@@ -141,6 +141,20 @@ export function requireRole(...roles: string[]) {
       return res.status(401).json({ error: "Authentication required" });
     }
     if (!roles.includes(req.user!.role)) {
+      return res.status(403).json({ error: "Insufficient permissions" });
+    }
+    next();
+  };
+}
+
+export function requirePermission(...permissions: Permission[]) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    if (!req.isAuthenticated()) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+    const userRole = req.user!.role as UserRole;
+    const hasRequiredPermission = permissions.some(p => hasPermission(userRole, p));
+    if (!hasRequiredPermission) {
       return res.status(403).json({ error: "Insufficient permissions" });
     }
     next();

@@ -1,6 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import { requireAuth, requirePermission } from "./auth";
 import {
   insertProductSchema,
   insertItemSchema,
@@ -20,6 +21,14 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+
+  // Apply authentication to all API routes except auth endpoints
+  app.use("/api", (req, res, next) => {
+    if (req.path.startsWith("/auth")) {
+      return next();
+    }
+    return requireAuth(req, res, next);
+  });
 
   // ============ PRODUCTS ============
   app.get("/api/products", async (req, res) => {
@@ -41,7 +50,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/products", async (req, res) => {
+  app.post("/api/products", requirePermission("products:write"), async (req, res) => {
     try {
       const data = insertProductSchema.parse(req.body);
       const product = await storage.createProduct(data);
@@ -54,7 +63,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/products/:id", async (req, res) => {
+  app.patch("/api/products/:id", requirePermission("products:write"), async (req, res) => {
     try {
       const data = insertProductSchema.partial().parse(req.body);
       const product = await storage.updateProduct(req.params.id, data);
@@ -67,7 +76,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/products/:id", async (req, res) => {
+  app.delete("/api/products/:id", requirePermission("products:delete"), async (req, res) => {
     try {
       await storage.deleteProduct(req.params.id);
       res.status(204).send();
@@ -131,7 +140,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/items", async (req, res) => {
+  app.post("/api/items", requirePermission("inventory:write"), async (req, res) => {
     try {
       const data = insertItemSchema.parse(req.body);
       
@@ -151,7 +160,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/items/:id", async (req, res) => {
+  app.patch("/api/items/:id", requirePermission("inventory:write"), async (req, res) => {
     try {
       const data = insertItemSchema.partial().parse(req.body);
       const item = await storage.updateItem(req.params.id, data);
@@ -164,7 +173,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/items/:id", async (req, res) => {
+  app.delete("/api/items/:id", requirePermission("inventory:delete"), async (req, res) => {
     try {
       await storage.deleteItem(req.params.id);
       res.status(204).send();
@@ -193,7 +202,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/customers", async (req, res) => {
+  app.post("/api/customers", requirePermission("customers:write"), async (req, res) => {
     try {
       const data = insertCustomerSchema.parse(req.body);
       const customer = await storage.createCustomer(data);
@@ -206,7 +215,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/customers/:id", async (req, res) => {
+  app.patch("/api/customers/:id", requirePermission("customers:write"), async (req, res) => {
     try {
       const data = insertCustomerSchema.partial().parse(req.body);
       const customer = await storage.updateCustomer(req.params.id, data);
@@ -219,7 +228,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/customers/:id", async (req, res) => {
+  app.delete("/api/customers/:id", requirePermission("customers:delete"), async (req, res) => {
     try {
       await storage.deleteCustomer(req.params.id);
       res.status(204).send();
@@ -248,7 +257,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/suppliers", async (req, res) => {
+  app.post("/api/suppliers", requirePermission("suppliers:write"), async (req, res) => {
     try {
       const data = insertSupplierSchema.parse(req.body);
       const supplier = await storage.createSupplier(data);
@@ -261,7 +270,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/suppliers/:id", async (req, res) => {
+  app.patch("/api/suppliers/:id", requirePermission("suppliers:write"), async (req, res) => {
     try {
       const data = insertSupplierSchema.partial().parse(req.body);
       const supplier = await storage.updateSupplier(req.params.id, data);
@@ -274,7 +283,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/suppliers/:id", async (req, res) => {
+  app.delete("/api/suppliers/:id", requirePermission("suppliers:delete"), async (req, res) => {
     try {
       await storage.deleteSupplier(req.params.id);
       res.status(204).send();
@@ -352,7 +361,7 @@ export async function registerRoutes(
     })),
   });
 
-  app.post("/api/sales", async (req, res) => {
+  app.post("/api/sales", requirePermission("sales:write"), async (req, res) => {
     try {
       const data = createSaleSchema.parse(req.body);
       
@@ -512,7 +521,7 @@ export async function registerRoutes(
     })),
   });
 
-  app.post("/api/purchase-invoices", async (req, res) => {
+  app.post("/api/purchase-invoices", requirePermission("purchases:write"), async (req, res) => {
     try {
       const data = createPurchaseInvoiceSchema.parse(req.body);
       
@@ -611,7 +620,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/payments", async (req, res) => {
+  app.post("/api/payments", requirePermission("payments:write"), async (req, res) => {
     try {
       const data = insertPaymentSchema.parse(req.body);
       
@@ -668,7 +677,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/cash-register", async (req, res) => {
+  app.post("/api/cash-register", requirePermission("cash_register:write"), async (req, res) => {
     try {
       // Check if there's already an active session
       const activeSession = await storage.getActiveCashRegisterSession();
@@ -695,7 +704,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/cash-register/:id/close", async (req, res) => {
+  app.post("/api/cash-register/:id/close", requirePermission("cash_register:write"), async (req, res) => {
     try {
       const session = await storage.getCashRegisterSession(req.params.id);
       if (!session) return res.status(404).json({ error: "Session not found" });
@@ -716,7 +725,7 @@ export async function registerRoutes(
 
       const salesCash = sessionSales
         .filter(s => s.paymentMethod === "cash")
-        .reduce((sum, s) => sum + s.paidAmount, 0);
+        .reduce((sum, s) => sum + (s.paidAmount ?? 0), 0);
       
       const paymentsCash = sessionPayments
         .filter(p => p.paymentMethod === "cash")
@@ -756,7 +765,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/expenses", async (req, res) => {
+  app.post("/api/expenses", requirePermission("expenses:write"), async (req, res) => {
     try {
       const data = insertExpenseSchema.parse(req.body);
       

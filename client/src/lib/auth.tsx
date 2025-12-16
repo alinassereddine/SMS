@@ -1,6 +1,7 @@
-import { createContext, useContext, useState, useEffect } from "react";
+import { createContext, useContext, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "./queryClient";
+import { hasPermission, hasAnyPermission, type Permission, type UserRole } from "@shared/permissions";
 
 interface AuthUser {
   id: string;
@@ -16,6 +17,8 @@ interface AuthContextType {
   login: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   isAuthenticated: boolean;
+  can: (permission: Permission) => boolean;
+  canAny: (permissions: Permission[]) => boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -53,6 +56,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await logoutMutation.mutateAsync();
   };
 
+  const can = useCallback((permission: Permission): boolean => {
+    if (!user) return false;
+    return hasPermission(user.role as UserRole, permission);
+  }, [user]);
+
+  const canAny = useCallback((permissions: Permission[]): boolean => {
+    if (!user) return false;
+    return hasAnyPermission(user.role as UserRole, permissions);
+  }, [user]);
+
   return (
     <AuthContext.Provider
       value={{
@@ -61,6 +74,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         login,
         logout,
         isAuthenticated: !!user,
+        can,
+        canAny,
       }}
     >
       {children}
