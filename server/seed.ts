@@ -7,13 +7,31 @@ export async function seedDatabase() {
   if (existingAdmin.length === 0) {
     console.log("Seeding database with initial data...");
     
-    await db.insert(users).values({
-      username: "admin",
-      password: "admin123",
-      displayName: "Administrator",
-      role: "admin",
-      permissions: [],
-    });
+    await db.insert(users).values([
+      {
+        username: "admin",
+        password: "admin123",
+        displayName: "Administrator",
+        role: "admin",
+        permissions: [],
+      },
+      {
+        username: "Alaa",
+        password: "Alaa1",
+        displayName: "Alaa",
+        role: "restricted",
+        permissions: [
+          'products:read', 'products:write',
+          'inventory:read', 'inventory:write',
+          'sales:read', 'sales:write',
+          'purchases:read', 'purchases:write',
+          'customers:read', 'customers:write',
+          'suppliers:read', 'suppliers:write',
+          'payments:read', 'payments:write',
+          'expenses:read', 'expenses:write'
+        ],
+      }
+    ]);
 
     await db.insert(products).values([
       { name: "iPhone 15 Pro Max", brand: "Apple", category: "Smartphones", specifications: { storage: "256GB", color: "Natural Titanium" } },

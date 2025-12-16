@@ -58,11 +58,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const can = useCallback((permission: Permission): boolean => {
     if (!user) return false;
+    // Check custom permissions first, then role permissions
+    if (user.permissions && user.permissions.length > 0) {
+      return user.permissions.includes(permission);
+    }
     return hasPermission(user.role as UserRole, permission);
   }, [user]);
 
   const canAny = useCallback((permissions: Permission[]): boolean => {
     if (!user) return false;
+    // Check custom permissions first, then role permissions
+    if (user.permissions && user.permissions.length > 0) {
+      return permissions.some(p => user.permissions!.includes(p));
+    }
     return hasAnyPermission(user.role as UserRole, permissions);
   }, [user]);
 

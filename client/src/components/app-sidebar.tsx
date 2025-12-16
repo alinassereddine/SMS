@@ -104,7 +104,7 @@ function NavGroup({ label, items }: NavGroupProps) {
 }
 
 export function AppSidebar() {
-  const { user, logout } = useAuth();
+  const { user, logout, can } = useAuth();
   
   const getInitials = (name: string) => {
     return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
@@ -117,6 +117,23 @@ export function AppSidebar() {
       console.error('Logout failed:', error);
     }
   };
+
+  // Filter nav items based on permissions
+  const filteredMainNav = mainNavItems.filter(item => {
+    if (item.url === "/") return can("dashboard:read");
+    return true;
+  });
+
+  const filteredFinanceNav = financeNavItems.filter(item => {
+    if (item.url === "/cash-register") return can("cash_register:read");
+    if (item.url === "/reports") return can("reports:read");
+    return true;
+  });
+
+  const filteredAdminNav = adminNavItems.filter(item => {
+    if (item.url === "/settings") return can("settings:read");
+    return true;
+  });
 
   return (
     <Sidebar>
@@ -133,12 +150,12 @@ export function AppSidebar() {
       </SidebarHeader>
 
       <SidebarContent className="py-2">
-        <NavGroup label="Main" items={mainNavItems} />
+        {filteredMainNav.length > 0 && <NavGroup label="Main" items={filteredMainNav} />}
         <NavGroup label="Inventory" items={inventoryNavItems} />
         <NavGroup label="Sales" items={salesNavItems} />
         <NavGroup label="Purchases" items={purchaseNavItems} />
-        <NavGroup label="Finance" items={financeNavItems} />
-        <NavGroup label="Admin" items={adminNavItems} />
+        {filteredFinanceNav.length > 0 && <NavGroup label="Finance" items={filteredFinanceNav} />}
+        {filteredAdminNav.length > 0 && <NavGroup label="Admin" items={filteredAdminNav} />}
       </SidebarContent>
 
       <SidebarFooter className="border-t border-sidebar-border p-4">

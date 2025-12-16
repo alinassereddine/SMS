@@ -1,4 +1,4 @@
-export type UserRole = 'admin' | 'manager' | 'cashier' | 'viewer';
+export type UserRole = 'admin' | 'manager' | 'cashier' | 'viewer' | 'restricted';
 
 export type Permission = 
   | 'products:read' | 'products:write' | 'products:delete'
@@ -12,7 +12,11 @@ export type Permission =
   | 'cash_register:read' | 'cash_register:write'
   | 'reports:read'
   | 'settings:read' | 'settings:write'
-  | 'users:read' | 'users:write' | 'users:delete';
+  | 'users:read' | 'users:write' | 'users:delete'
+  | 'dashboard:read'
+  | 'customers:details' | 'customers:balance'
+  | 'suppliers:details' | 'suppliers:balance'
+  | 'purchases:balance';
 
 export const rolePermissions: Record<UserRole, Permission[]> = {
   admin: [
@@ -27,7 +31,11 @@ export const rolePermissions: Record<UserRole, Permission[]> = {
     'cash_register:read', 'cash_register:write',
     'reports:read',
     'settings:read', 'settings:write',
-    'users:read', 'users:write', 'users:delete'
+    'users:read', 'users:write', 'users:delete',
+    'dashboard:read',
+    'customers:details', 'customers:balance',
+    'suppliers:details', 'suppliers:balance',
+    'purchases:balance'
   ],
   manager: [
     'products:read', 'products:write',
@@ -40,7 +48,11 @@ export const rolePermissions: Record<UserRole, Permission[]> = {
     'expenses:read', 'expenses:write',
     'cash_register:read', 'cash_register:write',
     'reports:read',
-    'settings:read'
+    'settings:read',
+    'dashboard:read',
+    'customers:details', 'customers:balance',
+    'suppliers:details', 'suppliers:balance',
+    'purchases:balance'
   ],
   cashier: [
     'products:read',
@@ -49,7 +61,11 @@ export const rolePermissions: Record<UserRole, Permission[]> = {
     'customers:read', 'customers:write',
     'payments:read', 'payments:write',
     'cash_register:read', 'cash_register:write',
-    'reports:read'
+    'reports:read',
+    'dashboard:read',
+    'customers:details', 'customers:balance',
+    'suppliers:details', 'suppliers:balance',
+    'purchases:balance'
   ],
   viewer: [
     'products:read',
@@ -61,7 +77,21 @@ export const rolePermissions: Record<UserRole, Permission[]> = {
     'payments:read',
     'expenses:read',
     'cash_register:read',
-    'reports:read'
+    'reports:read',
+    'dashboard:read',
+    'customers:details', 'customers:balance',
+    'suppliers:details', 'suppliers:balance',
+    'purchases:balance'
+  ],
+  restricted: [
+    'products:read', 'products:write',
+    'inventory:read', 'inventory:write',
+    'sales:read', 'sales:write',
+    'purchases:read', 'purchases:write',
+    'customers:read', 'customers:write',
+    'suppliers:read', 'suppliers:write',
+    'payments:read', 'payments:write',
+    'expenses:read', 'expenses:write'
   ]
 };
 
