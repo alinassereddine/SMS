@@ -41,6 +41,43 @@ import { useAuth } from "@/lib/auth";
 import type { Sale, SaleWithCustomer, Item, Product, Customer } from "@shared/schema";
 import { Link } from "wouter";
 
+type DatePreset = "today" | "week" | "month" | "year" | "all";
+
+const datePresets: { value: DatePreset; label: string }[] = [
+  { value: "today", label: "Today" },
+  { value: "week", label: "This Week" },
+  { value: "month", label: "This Month" },
+  { value: "year", label: "This Year" },
+  { value: "all", label: "All Time" },
+];
+
+function getDateRange(preset: DatePreset): { from: Date | null; to: Date } {
+  const now = new Date();
+  const to = now;
+  
+  switch (preset) {
+    case "today":
+      const today = new Date(now);
+      today.setHours(0, 0, 0, 0);
+      return { from: today, to };
+    case "week":
+      const week = new Date(now);
+      week.setDate(now.getDate() - 7);
+      return { from: week, to };
+    case "month":
+      const month = new Date(now);
+      month.setMonth(now.getMonth() - 1);
+      return { from: month, to };
+    case "year":
+      const year = new Date(now);
+      year.setFullYear(now.getFullYear() - 1);
+      return { from: year, to };
+    case "all":
+    default:
+      return { from: null, to };
+  }
+}
+
 type EditItem = {
   itemId: string;
   imei: string;
@@ -52,10 +89,12 @@ type EditItem = {
 export default function Sales() {
   const [search, setSearch] = useState("");
   const [paymentFilter, setPaymentFilter] = useState<string>("all");
+  const [datePreset, setDatePreset] = useState<DatePreset>("month");
   const [selectedSale, setSelectedSale] = useState<SaleWithCustomer | null>(null);
   const [deleteConfirmSale, setDeleteConfirmSale] = useState<SaleWithCustomer | null>(null);
   const { can } = useAuth();
   const canDelete = can("sales:delete");
+  const { from: dateFrom } = getDateRange(datePreset);
   const [editSale, setEditSale] = useState<SaleWithCustomer | null>(null);
   const [editItems, setEditItems] = useState<EditItem[]>([]);
   const [editCustomerId, setEditCustomerId] = useState<string | null>(null);
@@ -205,7 +244,9 @@ export default function Sales() {
       sale.saleNumber.toLowerCase().includes(search.toLowerCase()) ||
       sale.customer?.name.toLowerCase().includes(search.toLowerCase());
     const matchesPayment = paymentFilter === "all" || sale.paymentType === paymentFilter;
-    return matchesSearch && matchesPayment;
+    const saleDate = new Date(sale.date);
+    const matchesDate = !dateFrom || saleDate >= dateFrom;
+    return matchesSearch && matchesPayment && matchesDate;
   });
 
   const columns: Column<SaleWithCustomer>[] = [
@@ -362,6 +403,18 @@ export default function Sales() {
             <SelectItem value="full">Full</SelectItem>
             <SelectItem value="partial">Partial</SelectItem>
             <SelectItem value="credit">Credit</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={datePreset} onValueChange={(v) => setDatePreset(v as DatePreset)}>
+          <SelectTrigger className="w-40" data-testid="select-date-filter">
+            <SelectValue placeholder="Date Range" />
+          </SelectTrigger>
+          <SelectContent>
+            {datePresets.map((preset) => (
+              <SelectItem key={preset.value} value={preset.value}>
+                {preset.label}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>

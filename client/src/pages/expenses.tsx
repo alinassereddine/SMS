@@ -123,8 +123,8 @@ function getDateRange(preset: DatePreset): { from: Date | null; to: Date } {
 export default function Expenses() {
   const [search, setSearch] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [isEditDateDialogOpen, setIsEditDateDialogOpen] = useState(false);
-  const [selectedExpense, setSelectedExpense] = useState<Expense | null>(null);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [editDate, setEditDate] = useState("");
   const [datePreset, setDatePreset] = useState<DatePreset>("month");
   const { toast } = useToast();
@@ -176,18 +176,35 @@ export default function Expenses() {
     },
   });
 
-  const updateDateMutation = useMutation({
-    mutationFn: async ({ id, date }: { id: string; date: string }) => {
-      return apiRequest("PATCH", `/api/expenses/${id}`, { date: new Date(date) });
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: ExpenseFormValues & { date?: string } }) => {
+      const payload = { ...data };
+      if (data.date) {
+        (payload as any).date = new Date(data.date);
+      }
+      return apiRequest("PATCH", `/api/expenses/${id}`, payload);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
-      setIsEditDateDialogOpen(false);
-      setSelectedExpense(null);
-      toast({ title: "Expense date updated successfully" });
+      setIsEditDialogOpen(false);
+      setEditingExpense(null);
+      editForm.reset();
+      toast({ title: "Expense updated successfully" });
     },
     onError: () => {
-      toast({ title: "Failed to update expense date", variant: "destructive" });
+      toast({ title: "Failed to update expense", variant: "destructive" });
+    },
+  });
+
+  const editForm = useForm<ExpenseFormValues & { date: string }>({
+    resolver: zodResolver(expenseFormSchema.extend({ date: z.string().min(1, "Date is required") })),
+    defaultValues: {
+      description: "",
+      category: "",
+      amount: 0,
+      paymentMethod: "cash",
+      notes: "",
+      date: "",
     },
   });
 
@@ -195,15 +212,23 @@ export default function Expenses() {
     createMutation.mutate(data);
   };
 
-  const handleEditDate = (expense: Expense) => {
-    setSelectedExpense(expense);
+  const handleEdit = (expense: Expense) => {
+    setEditingExpense(expense);
     setEditDate(new Date(expense.date).toISOString().split("T")[0]);
-    setIsEditDateDialogOpen(true);
+    editForm.reset({
+      description: expense.description,
+      category: expense.category,
+      amount: expense.amount,
+      paymentMethod: expense.paymentMethod as "cash" | "card" | "transfer",
+      notes: expense.notes || "",
+      date: new Date(expense.date).toISOString().split("T")[0],
+    });
+    setIsEditDialogOpen(true);
   };
 
-  const handleSaveDate = () => {
-    if (selectedExpense && editDate) {
-      updateDateMutation.mutate({ id: selectedExpense.id, date: editDate });
+  const handleSaveEdit = (data: ExpenseFormValues & { date: string }) => {
+    if (editingExpense) {
+      updateMutation.mutate({ id: editingExpense.id, data });
     }
   };
 
@@ -294,9 +319,9 @@ export default function Expenses() {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => handleEditDate(expense)}>
+            <DropdownMenuItem onClick={() => handleEdit(expense)}>
               <Pencil className="h-4 w-4 mr-2" />
-              Edit Date
+              Edit
             </DropdownMenuItem>
             {canDelete && (
               <DropdownMenuItem 
@@ -612,41 +637,132 @@ export default function Expenses() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={isEditDateDialogOpen} onOpenChange={setIsEditDateDialogOpen}>
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Edit Expense Date</DialogTitle>
+            <DialogTitle>Edit Expense</DialogTitle>
             <DialogDescription>
-              Change the date for this expense
+              Modify expense details
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Date</label>
-              <Input
-                type="date"
-                value={editDate}
-                onChange={(e) => setEditDate(e.target.value)}
-                data-testid="input-edit-expense-date"
+          <Form {...editForm}>
+            <form onSubmit={editForm.handleSubmit(handleSaveEdit)} className="space-y-4">
+              <FormField
+                control={editForm.control}
+                name="date"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Date</FormLabel>
+                    <FormControl>
+                      <Input type="date" {...field} data-testid="input-edit-expense-date" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
               />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button 
-              type="button" 
-              variant="outline" 
-              onClick={() => setIsEditDateDialogOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleSaveDate}
-              disabled={updateDateMutation.isPending}
-              data-testid="button-save-expense-date"
-            >
-              {updateDateMutation.isPending ? "Saving..." : "Save Date"}
-            </Button>
-          </DialogFooter>
+
+              <FormField
+                control={editForm.control}
+                name="description"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Description</FormLabel>
+                    <FormControl>
+                      <Input placeholder="e.g., Office supplies" {...field} data-testid="input-edit-expense-description" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={editForm.control}
+                name="category"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Category</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-edit-expense-category">
+                          <SelectValue placeholder="Select category" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {expenseCategories.map((cat) => (
+                          <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={editForm.control}
+                name="amount"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Amount</FormLabel>
+                    <FormControl>
+                      <CurrencyInput value={field.value} onChange={field.onChange} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={editForm.control}
+                name="paymentMethod"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Payment Method</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-edit-expense-method">
+                          <SelectValue />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="cash">Cash</SelectItem>
+                        <SelectItem value="card">Card</SelectItem>
+                        <SelectItem value="transfer">Bank Transfer</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={editForm.control}
+                name="notes"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Notes (Optional)</FormLabel>
+                    <FormControl>
+                      <Textarea placeholder="Additional notes..." {...field} data-testid="input-edit-expense-notes" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={updateMutation.isPending}
+                  data-testid="button-save-expense-edit"
+                >
+                  {updateMutation.isPending ? "Saving..." : "Save Changes"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
         </DialogContent>
       </Dialog>
     </div>

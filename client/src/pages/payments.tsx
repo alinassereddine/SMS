@@ -49,6 +49,43 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils";
 import type { Payment, Customer, Supplier, PaymentWithEntity } from "@shared/schema";
 
+type DatePreset = "today" | "week" | "month" | "year" | "all";
+
+const datePresets: { value: DatePreset; label: string }[] = [
+  { value: "today", label: "Today" },
+  { value: "week", label: "This Week" },
+  { value: "month", label: "This Month" },
+  { value: "year", label: "This Year" },
+  { value: "all", label: "All Time" },
+];
+
+function getDateRange(preset: DatePreset): { from: Date | null; to: Date } {
+  const now = new Date();
+  const to = now;
+  
+  switch (preset) {
+    case "today":
+      const today = new Date(now);
+      today.setHours(0, 0, 0, 0);
+      return { from: today, to };
+    case "week":
+      const week = new Date(now);
+      week.setDate(now.getDate() - 7);
+      return { from: week, to };
+    case "month":
+      const month = new Date(now);
+      month.setMonth(now.getMonth() - 1);
+      return { from: month, to };
+    case "year":
+      const year = new Date(now);
+      year.setFullYear(now.getFullYear() - 1);
+      return { from: year, to };
+    case "all":
+    default:
+      return { from: null, to };
+  }
+}
+
 const paymentFormSchema = z.object({
   type: z.enum(["customer", "supplier"]),
   entityId: z.string().min(1, "Please select a customer or supplier"),
@@ -64,7 +101,9 @@ type PaymentFormValues = z.infer<typeof paymentFormSchema>;
 export default function Payments() {
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<"all" | "customer" | "supplier">("all");
+  const [datePreset, setDatePreset] = useState<DatePreset>("month");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const { from: dateFrom } = getDateRange(datePreset);
   const [editPayment, setEditPayment] = useState<PaymentWithEntity | null>(null);
   const [editDate, setEditDate] = useState<string>("");
   const [editAmount, setEditAmount] = useState(0);
@@ -166,7 +205,9 @@ export default function Payments() {
     const matchesSearch = 
       payment.entity?.name?.toLowerCase().includes(search.toLowerCase()) ||
       payment.reference?.toLowerCase().includes(search.toLowerCase());
-    return matchesType && matchesSearch;
+    const paymentDate = new Date(payment.date);
+    const matchesDate = !dateFrom || paymentDate >= dateFrom;
+    return matchesType && matchesSearch && matchesDate;
   });
 
   const columns: Column<PaymentWithEntity>[] = [
@@ -338,6 +379,18 @@ export default function Payments() {
             <TabsTrigger value="supplier">Suppliers</TabsTrigger>
           </TabsList>
         </Tabs>
+        <Select value={datePreset} onValueChange={(v) => setDatePreset(v as DatePreset)}>
+          <SelectTrigger className="w-40" data-testid="select-date-filter">
+            <SelectValue placeholder="Date Range" />
+          </SelectTrigger>
+          <SelectContent>
+            {datePresets.map((preset) => (
+              <SelectItem key={preset.value} value={preset.value}>
+                {preset.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       <DataTable
