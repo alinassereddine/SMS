@@ -15,6 +15,7 @@ import {
   insertCashRegisterSessionSchema,
   insertExpenseSchema,
   insertCurrencySchema,
+  updateSaleFullSchema,
 } from "@shared/schema";
 import { z } from "zod";
 
@@ -580,6 +581,209 @@ export async function registerRoutes(
       if (error instanceof z.ZodError) {
         return res.status(400).json({ error: error.errors });
       }
+      res.status(500).json({ error: "Failed to update sale" });
+    }
+  });
+
+  // Comprehensive sale edit (items, prices, paid amount)
+  app.put("/api/sales/:id", requirePermission("sales:write"), async (req, res) => {
+    try {
+      // Get existing sale
+      const sale = await storage.getSale(req.params.id);
+      if (!sale) return res.status(404).json({ error: "Sale not found" });
+
+      // Check cash register session
+      if (sale.cashRegisterSessionId) {
+        const session = await storage.getCashRegisterSession(sale.cashRegisterSessionId);
+        if (session && session.status === "closed") {
+          return res.status(400).json({ 
+            error: "Cannot edit: Sale is linked to a closed cash register session" 
+          });
+        }
+      }
+
+      // Validate input
+      const data = updateSaleFullSchema.parse(req.body);
+      
+      // Get current sale items
+      const currentSaleItems = await storage.getSaleItems(sale.id);
+      const currentItemIds = new Set(currentSaleItems.map(si => si.itemId));
+      const newItemIds = new Set(data.items.map(i => i.itemId));
+      
+      // Determine items to remove and add
+      const itemsToRemove = currentSaleItems.filter(si => !newItemIds.has(si.itemId));
+      const itemsToAdd = data.items.filter(i => !currentItemIds.has(i.itemId));
+      const itemsToUpdate = data.items.filter(i => currentItemIds.has(i.itemId));
+      
+      // Validate all new items are available
+      for (const itemToAdd of itemsToAdd) {
+        const item = await storage.getItem(itemToAdd.itemId);
+        if (!item) {
+          return res.status(400).json({ error: `Item ${itemToAdd.itemId} not found` });
+        }
+        if (item.status !== "available") {
+          return res.status(400).json({ 
+            error: `Item with IMEI ${item.imei} is not available (status: ${item.status})` 
+          });
+        }
+      }
+      
+      // Check customer requirement for credit/partial payments
+      const discountAmount = data.discountAmount ?? sale.discountAmount ?? 0;
+      
+      // Calculate new subtotal and totals from items
+      let newSubtotal = 0;
+      let newProfit = 0;
+      const itemDataMap = new Map(data.items.map(i => [i.itemId, i]));
+      
+      // Process all items (both existing and new)
+      for (const itemData of data.items) {
+        const item = await storage.getItem(itemData.itemId);
+        if (!item) {
+          return res.status(400).json({ error: `Item ${itemData.itemId} not found` });
+        }
+        newSubtotal += itemData.unitPrice;
+        newProfit += itemData.unitPrice - item.purchasePrice;
+      }
+      
+      // Validate discount
+      if (discountAmount > newSubtotal) {
+        return res.status(400).json({ error: "Discount cannot exceed subtotal" });
+      }
+      
+      const newTotal = newSubtotal - discountAmount;
+      const newPaidAmount = data.paidAmount ?? sale.paidAmount ?? 0;
+      
+      // Validate paid amount
+      if (newPaidAmount > newTotal) {
+        return res.status(400).json({ error: "Paid amount cannot exceed total" });
+      }
+      
+      const newBalanceImpact = Math.max(0, newTotal - newPaidAmount);
+      
+      // Check customer requirement for credit/partial
+      if (newBalanceImpact > 0 && !data.customerId && !sale.customerId) {
+        return res.status(400).json({ 
+          error: "Customer is required for partial/credit sales" 
+        });
+      }
+      
+      // Determine payment type
+      let newPaymentType = "credit";
+      if (newPaidAmount >= newTotal) {
+        newPaymentType = "full";
+      } else if (newPaidAmount > 0) {
+        newPaymentType = "partial";
+      }
+      
+      // Ensure profit is not negative
+      newProfit = Math.max(0, newProfit);
+      
+      // ---- Begin updates ----
+      
+      // 1. Release removed items (set status back to available)
+      for (const saleItem of itemsToRemove) {
+        await storage.updateItem(saleItem.itemId, {
+          status: "available",
+          saleId: null,
+          salePrice: null,
+          customerId: null,
+          soldAt: null,
+        });
+      }
+      
+      // 2. Mark new items as sold
+      const customerId = data.customerId !== undefined ? data.customerId : sale.customerId;
+      for (const itemToAdd of itemsToAdd) {
+        const item = await storage.getItem(itemToAdd.itemId);
+        if (item) {
+          await storage.updateItem(itemToAdd.itemId, {
+            status: "sold",
+            saleId: sale.id,
+            salePrice: itemToAdd.unitPrice,
+            customerId: customerId,
+            soldAt: new Date(),
+          });
+        }
+      }
+      
+      // 3. Update prices on existing items
+      for (const itemData of itemsToUpdate) {
+        const item = await storage.getItem(itemData.itemId);
+        if (item && item.salePrice !== itemData.unitPrice) {
+          await storage.updateItem(itemData.itemId, {
+            salePrice: itemData.unitPrice,
+          });
+        }
+      }
+      
+      // 4. Delete old sale items and create new ones
+      await storage.deleteSaleItems(sale.id);
+      
+      for (const itemData of data.items) {
+        const item = await storage.getItem(itemData.itemId);
+        if (item) {
+          const product = await storage.getProduct(item.productId);
+          await storage.createSaleItem({
+            saleId: sale.id,
+            productId: item.productId,
+            itemId: item.id,
+            imei: item.imei,
+            quantity: 1,
+            purchasePrice: item.purchasePrice,
+            unitPrice: itemData.unitPrice,
+            totalPrice: itemData.unitPrice,
+            profit: Math.max(0, itemData.unitPrice - item.purchasePrice),
+          });
+        }
+      }
+      
+      // 5. Update customer balance
+      const oldCustomerId = sale.customerId;
+      const newCustomerId = data.customerId !== undefined ? data.customerId : sale.customerId;
+      
+      // Remove balance from old customer if exists
+      if (oldCustomerId && sale.balanceImpact > 0) {
+        const oldCustomer = await storage.getCustomer(oldCustomerId);
+        if (oldCustomer) {
+          await storage.updateCustomer(oldCustomerId, {
+            balance: Math.max(0, (oldCustomer.balance || 0) - sale.balanceImpact),
+          });
+        }
+      }
+      
+      // Add balance to new customer if exists
+      if (newCustomerId && newBalanceImpact > 0) {
+        const newCustomer = await storage.getCustomer(newCustomerId);
+        if (newCustomer) {
+          await storage.updateCustomer(newCustomerId, {
+            balance: (newCustomer.balance || 0) + newBalanceImpact,
+          });
+        }
+      }
+      
+      // 6. Update sale record
+      const updatedSale = await storage.updateSale(sale.id, {
+        customerId: newCustomerId,
+        subtotal: newSubtotal,
+        discountAmount: discountAmount,
+        totalAmount: newTotal,
+        paidAmount: newPaidAmount,
+        balanceImpact: newBalanceImpact,
+        profit: newProfit,
+        paymentType: newPaymentType,
+        paymentMethod: data.paymentMethod ?? sale.paymentMethod,
+        notes: data.notes !== undefined ? data.notes : sale.notes,
+      });
+      
+      // Return updated sale with items
+      const newSaleItems = await storage.getSaleItems(sale.id);
+      res.json({ ...updatedSale, items: newSaleItems });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error("Failed to update sale:", error);
       res.status(500).json({ error: "Failed to update sale" });
     }
   });

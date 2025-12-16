@@ -264,6 +264,21 @@ export type Currency = typeof currencies.$inferSelect;
 export type InsertSetting = z.infer<typeof insertSettingSchema>;
 export type Setting = typeof settings.$inferSelect;
 
+// Update schemas for comprehensive editing
+export const updateSaleFullSchema = z.object({
+  customerId: z.string().nullable().optional(),
+  discountAmount: z.number().min(0).optional(),
+  paidAmount: z.number().min(0).optional(),
+  paymentMethod: z.string().optional(),
+  notes: z.string().nullable().optional(),
+  items: z.array(z.object({
+    itemId: z.string(),
+    unitPrice: z.number().min(0),
+  })).min(1, "Sale must have at least one item"),
+});
+
+export type UpdateSaleFull = z.infer<typeof updateSaleFullSchema>;
+
 // Extended types for frontend
 export type ItemWithProduct = Item & { product: Product };
 export type SaleWithCustomer = Sale & { customer?: Customer; items: (SaleItem & { product: Product })[] };
