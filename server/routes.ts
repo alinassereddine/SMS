@@ -1715,10 +1715,113 @@ export async function registerRoutes(
 
       const expectedBalance = session.openingBalance + salesCash + paymentsCash - expensesCash;
       
+      // Get only the entity names needed for this session's payments
+      const customerIds = new Set(sessionPayments.filter(p => p.type === 'customer').map(p => p.entityId));
+      const supplierIds = new Set(sessionPayments.filter(p => p.type === 'supplier').map(p => p.entityId));
+      
+      const customerMap = new Map<string, string>();
+      const supplierMap = new Map<string, string>();
+      
+      // Only fetch entities that are actually referenced
+      if (customerIds.size > 0) {
+        const customers = await storage.getCustomers();
+        for (const c of customers) {
+          if (customerIds.has(c.id)) {
+            customerMap.set(c.id, c.name);
+          }
+        }
+      }
+      if (supplierIds.size > 0) {
+        const suppliers = await storage.getSuppliers();
+        for (const s of suppliers) {
+          if (supplierIds.has(s.id)) {
+            supplierMap.set(s.id, s.name);
+          }
+        }
+      }
+
+      // Format transactions for display
+      const transactions: Array<{
+        id: string;
+        type: 'sale' | 'payment' | 'expense';
+        description: string;
+        amount: number;
+        cashAmount: number;
+        paymentMethod: string;
+        date: string;
+      }> = [];
+
+      for (const sale of sessionSales) {
+        transactions.push({
+          id: sale.id,
+          type: 'sale',
+          description: `Sale ${sale.saleNumber}`,
+          amount: sale.paidAmount ?? 0,
+          cashAmount: sale.paymentMethod === 'cash' ? (sale.paidAmount ?? 0) : 0,
+          paymentMethod: sale.paymentMethod ?? 'cash',
+          date: String(sale.date),
+        });
+      }
+
+      for (const payment of sessionPayments) {
+        const entityName = payment.type === 'customer' 
+          ? customerMap.get(payment.entityId) || 'Unknown'
+          : supplierMap.get(payment.entityId) || 'Unknown';
+        const isRefund = payment.transactionType === 'refund';
+        const typeLabel = isRefund ? 'Refund' : 'Payment';
+        const direction = payment.type === 'customer' 
+          ? (isRefund ? 'to' : 'from')
+          : (isRefund ? 'from' : 'to');
+        
+        // Calculate cash impact
+        let cashAmount = 0;
+        if (payment.paymentMethod === 'cash') {
+          if (payment.type === 'customer') {
+            cashAmount = isRefund ? -payment.amount : payment.amount;
+          } else {
+            cashAmount = isRefund ? payment.amount : -payment.amount;
+          }
+        }
+        
+        transactions.push({
+          id: payment.id,
+          type: 'payment',
+          description: `${typeLabel} ${direction} ${entityName}`,
+          amount: payment.amount,
+          cashAmount,
+          paymentMethod: payment.paymentMethod,
+          date: String(payment.date),
+        });
+      }
+
+      for (const expense of sessionExpenses) {
+        transactions.push({
+          id: expense.id,
+          type: 'expense',
+          description: `Expense: ${expense.category}`,
+          amount: expense.amount,
+          cashAmount: expense.paymentMethod === 'cash' ? -expense.amount : 0,
+          paymentMethod: expense.paymentMethod,
+          date: String(expense.date),
+        });
+      }
+
+      // Sort by date
+      transactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      
       res.json({
         ...session,
         expectedBalance,
         transactionCount: sessionSales.length + sessionPayments.length + sessionExpenses.length,
+        transactions,
+        summary: {
+          salesCount: sessionSales.length,
+          paymentsCount: sessionPayments.length,
+          expensesCount: sessionExpenses.length,
+          salesCash,
+          paymentsCash,
+          expensesCash,
+        },
       });
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch active session" });

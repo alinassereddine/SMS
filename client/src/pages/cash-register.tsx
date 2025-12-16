@@ -28,6 +28,30 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { formatCurrency, formatDateTime, generateSessionNumber } from "@/lib/utils";
 import type { CashRegisterSession } from "@shared/schema";
+import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
+
+interface SessionTransaction {
+  id: string;
+  type: 'sale' | 'payment' | 'expense';
+  description: string;
+  amount: number;
+  cashAmount: number;
+  paymentMethod: string;
+  date: string;
+}
+
+interface ActiveSessionWithDetails extends CashRegisterSession {
+  transactions?: SessionTransaction[];
+  summary?: {
+    salesCount: number;
+    paymentsCount: number;
+    expensesCount: number;
+    salesCash: number;
+    paymentsCash: number;
+    expensesCash: number;
+  };
+}
 
 export default function CashRegister() {
   const [isOpenDialogOpen, setIsOpenDialogOpen] = useState(false);
@@ -43,7 +67,7 @@ export default function CashRegister() {
     queryKey: ["/api/cash-register"],
   });
 
-  const { data: activeSession } = useQuery<CashRegisterSession | null>({
+  const { data: activeSession } = useQuery<ActiveSessionWithDetails | null>({
     queryKey: ["/api/cash-register/active"],
   });
 
@@ -251,7 +275,7 @@ export default function CashRegister() {
               Active Session
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
             <div className="grid gap-4 md:grid-cols-4">
               <div>
                 <p className="text-xs text-muted-foreground uppercase">Session Number</p>
@@ -272,6 +296,70 @@ export default function CashRegister() {
                 </p>
               </div>
             </div>
+            
+            {activeSession.summary && (
+              <div className="pt-4 border-t" data-testid="section-cash-flow-summary">
+                <p className="text-sm font-medium mb-3">Cash Flow Summary</p>
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div className="flex items-center justify-between p-3 bg-background rounded-lg" data-testid="summary-sales">
+                    <span className="text-sm text-muted-foreground">Sales ({activeSession.summary.salesCount})</span>
+                    <span className="font-mono font-medium text-emerald-600 dark:text-emerald-400">
+                      +{formatCurrency(activeSession.summary.salesCash)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between p-3 bg-background rounded-lg" data-testid="summary-payments">
+                    <span className="text-sm text-muted-foreground">Payments ({activeSession.summary.paymentsCount})</span>
+                    <span className={`font-mono font-medium ${activeSession.summary.paymentsCash >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
+                      {activeSession.summary.paymentsCash >= 0 ? '+' : ''}{formatCurrency(activeSession.summary.paymentsCash)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between p-3 bg-background rounded-lg" data-testid="summary-expenses">
+                    <span className="text-sm text-muted-foreground">Expenses ({activeSession.summary.expensesCount})</span>
+                    <span className="font-mono font-medium text-red-600 dark:text-red-400">
+                      -{formatCurrency(activeSession.summary.expensesCash)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeSession.transactions && activeSession.transactions.length > 0 && (
+              <div className="pt-4 border-t" data-testid="section-transactions">
+                <p className="text-sm font-medium mb-3">Session Transactions ({activeSession.transactions.length})</p>
+                <ScrollArea className="h-48">
+                  <div className="space-y-2">
+                    {activeSession.transactions.map((tx) => (
+                      <div key={tx.id} className="flex items-center justify-between p-2 bg-background rounded-lg" data-testid={`row-transaction-${tx.id}`}>
+                        <div className="flex items-center gap-3">
+                          <Badge 
+                            variant={tx.type === 'sale' ? 'default' : tx.type === 'payment' ? 'secondary' : 'outline'}
+                            className="text-xs"
+                          >
+                            {tx.type}
+                          </Badge>
+                          <div>
+                            <p className="text-sm font-medium">{tx.description}</p>
+                            <p className="text-xs text-muted-foreground">{tx.paymentMethod}</p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className={`font-mono text-sm font-medium ${tx.cashAmount >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
+                            {tx.cashAmount >= 0 ? '+' : ''}{formatCurrency(tx.cashAmount)}
+                          </p>
+                          <p className="text-xs text-muted-foreground">{formatDateTime(tx.date)}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
+              </div>
+            )}
+            
+            {(!activeSession.transactions || activeSession.transactions.length === 0) && (
+              <div className="pt-4 border-t">
+                <p className="text-sm text-muted-foreground text-center py-4">No transactions recorded in this session yet</p>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
