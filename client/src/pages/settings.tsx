@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Settings, Shield, Bell, Database, Palette, Coins, Plus, MoreHorizontal, Star, Trash2 } from "lucide-react";
+import { Settings, Shield, Bell, Database, Palette, Coins, Plus, MoreHorizontal, Star, Trash2, Archive, RotateCcw, AlertTriangle, Users, Building2, ShoppingCart, Package } from "lucide-react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,7 +18,18 @@ import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { insertCurrencySchema, type Currency, type InsertCurrency } from "@shared/schema";
+import { insertCurrencySchema, type Currency, type InsertCurrency, type Customer, type Supplier, type Sale, type PurchaseInvoice } from "@shared/schema";
+import { formatDate, formatCurrency } from "@/lib/utils";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { z } from "zod";
 
 const currencyFormSchema = insertCurrencySchema.extend({
@@ -38,6 +49,131 @@ export default function SettingsPage() {
   const { data: currencies = [] } = useQuery<Currency[]>({
     queryKey: ["/api/currencies"],
   });
+
+  // Archive state and queries
+  interface ArchivedData {
+    customers: Customer[];
+    suppliers: Supplier[];
+    sales: Sale[];
+    purchases: PurchaseInvoice[];
+  }
+  
+  const { data: archivedData, isLoading: archivedLoading } = useQuery<ArchivedData>({
+    queryKey: ["/api/archived"],
+  });
+
+  const [confirmDialog, setConfirmDialog] = useState<{
+    open: boolean;
+    type: "restore" | "delete";
+    entityType: "customer" | "supplier" | "sale" | "purchase";
+    entityId: string;
+    entityName: string;
+  } | null>(null);
+
+  const restoreCustomerMutation = useMutation({
+    mutationFn: (id: string) => apiRequest("POST", `/api/customers/${id}/restore`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/archived"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
+      toast({ title: "Customer restored successfully" });
+      setConfirmDialog(null);
+    },
+    onError: () => toast({ title: "Failed to restore customer", variant: "destructive" }),
+  });
+
+  const hardDeleteCustomerMutation = useMutation({
+    mutationFn: (id: string) => apiRequest("DELETE", `/api/customers/${id}/hard-delete`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/archived"] });
+      toast({ title: "Customer permanently deleted" });
+      setConfirmDialog(null);
+    },
+    onError: () => toast({ title: "Failed to delete customer", variant: "destructive" }),
+  });
+
+  const restoreSupplierMutation = useMutation({
+    mutationFn: (id: string) => apiRequest("POST", `/api/suppliers/${id}/restore`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/archived"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/suppliers"] });
+      toast({ title: "Supplier restored successfully" });
+      setConfirmDialog(null);
+    },
+    onError: () => toast({ title: "Failed to restore supplier", variant: "destructive" }),
+  });
+
+  const hardDeleteSupplierMutation = useMutation({
+    mutationFn: (id: string) => apiRequest("DELETE", `/api/suppliers/${id}/hard-delete`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/archived"] });
+      toast({ title: "Supplier permanently deleted" });
+      setConfirmDialog(null);
+    },
+    onError: () => toast({ title: "Failed to delete supplier", variant: "destructive" }),
+  });
+
+  const restoreSaleMutation = useMutation({
+    mutationFn: (id: string) => apiRequest("POST", `/api/sales/${id}/restore`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/archived"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales"] });
+      toast({ title: "Sale restored successfully" });
+      setConfirmDialog(null);
+    },
+    onError: () => toast({ title: "Failed to restore sale", variant: "destructive" }),
+  });
+
+  const hardDeleteSaleMutation = useMutation({
+    mutationFn: (id: string) => apiRequest("DELETE", `/api/sales/${id}/hard-delete`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/archived"] });
+      toast({ title: "Sale permanently deleted" });
+      setConfirmDialog(null);
+    },
+    onError: () => toast({ title: "Failed to delete sale", variant: "destructive" }),
+  });
+
+  const restorePurchaseMutation = useMutation({
+    mutationFn: (id: string) => apiRequest("POST", `/api/purchase-invoices/${id}/restore`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/archived"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-invoices"] });
+      toast({ title: "Purchase restored successfully" });
+      setConfirmDialog(null);
+    },
+    onError: () => toast({ title: "Failed to restore purchase", variant: "destructive" }),
+  });
+
+  const hardDeletePurchaseMutation = useMutation({
+    mutationFn: (id: string) => apiRequest("DELETE", `/api/purchase-invoices/${id}/hard-delete`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/archived"] });
+      toast({ title: "Purchase permanently deleted" });
+      setConfirmDialog(null);
+    },
+    onError: () => toast({ title: "Failed to delete purchase", variant: "destructive" }),
+  });
+
+  const handleArchiveAction = () => {
+    if (!confirmDialog) return;
+    const { type, entityType, entityId } = confirmDialog;
+    
+    if (type === "restore") {
+      switch (entityType) {
+        case "customer": restoreCustomerMutation.mutate(entityId); break;
+        case "supplier": restoreSupplierMutation.mutate(entityId); break;
+        case "sale": restoreSaleMutation.mutate(entityId); break;
+        case "purchase": restorePurchaseMutation.mutate(entityId); break;
+      }
+    } else {
+      switch (entityType) {
+        case "customer": hardDeleteCustomerMutation.mutate(entityId); break;
+        case "supplier": hardDeleteSupplierMutation.mutate(entityId); break;
+        case "sale": hardDeleteSaleMutation.mutate(entityId); break;
+        case "purchase": hardDeletePurchaseMutation.mutate(entityId); break;
+      }
+    }
+  };
 
   const form = useForm<CurrencyFormValues>({
     resolver: zodResolver(currencyFormSchema),
@@ -169,6 +305,10 @@ export default function SettingsPage() {
           <TabsTrigger value="security" className="gap-2">
             <Shield className="h-4 w-4" />
             Security
+          </TabsTrigger>
+          <TabsTrigger value="archive" className="gap-2">
+            <Archive className="h-4 w-4" />
+            Archive
           </TabsTrigger>
         </TabsList>
 
@@ -501,7 +641,302 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        <TabsContent value="archive" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Archived Items</CardTitle>
+              <CardDescription>
+                View and manage archived customers, suppliers, sales, and purchases. 
+                Archived items are hidden from main lists but their related transactions are preserved.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {archivedLoading ? (
+                <div className="text-center py-8 text-muted-foreground">Loading archived data...</div>
+              ) : (
+                <>
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2">
+                      <Users className="h-4 w-4 text-muted-foreground" />
+                      <h3 className="font-medium">Archived Customers ({archivedData?.customers?.length || 0})</h3>
+                    </div>
+                    {archivedData?.customers && archivedData.customers.length > 0 ? (
+                      <div className="space-y-2">
+                        {archivedData.customers.map((customer) => (
+                          <div 
+                            key={customer.id} 
+                            className="flex items-center justify-between gap-4 p-3 rounded-lg border"
+                            data-testid={`archived-customer-${customer.id}`}
+                          >
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium truncate">{customer.name}</p>
+                              <p className="text-sm text-muted-foreground">{customer.phone || customer.email || "No contact"}</p>
+                            </div>
+                            <div className="text-right text-sm">
+                              <p>Balance: {formatCurrency(customer.balance || 0)}</p>
+                            </div>
+                            <div className="flex gap-1">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setConfirmDialog({
+                                  open: true,
+                                  type: "restore",
+                                  entityType: "customer",
+                                  entityId: customer.id,
+                                  entityName: customer.name,
+                                })}
+                                data-testid={`button-restore-customer-${customer.id}`}
+                              >
+                                <RotateCcw className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                onClick={() => setConfirmDialog({
+                                  open: true,
+                                  type: "delete",
+                                  entityType: "customer",
+                                  entityId: customer.id,
+                                  entityName: customer.name,
+                                })}
+                                data-testid={`button-delete-customer-${customer.id}`}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground py-2">No archived customers</p>
+                    )}
+                  </div>
+
+                  <Separator />
+
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2">
+                      <Building2 className="h-4 w-4 text-muted-foreground" />
+                      <h3 className="font-medium">Archived Suppliers ({archivedData?.suppliers?.length || 0})</h3>
+                    </div>
+                    {archivedData?.suppliers && archivedData.suppliers.length > 0 ? (
+                      <div className="space-y-2">
+                        {archivedData.suppliers.map((supplier) => (
+                          <div 
+                            key={supplier.id} 
+                            className="flex items-center justify-between gap-4 p-3 rounded-lg border"
+                            data-testid={`archived-supplier-${supplier.id}`}
+                          >
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium truncate">{supplier.name}</p>
+                              <p className="text-sm text-muted-foreground">{supplier.phone || supplier.email || "No contact"}</p>
+                            </div>
+                            <div className="text-right text-sm">
+                              <p>Balance: {formatCurrency(supplier.balance || 0)}</p>
+                            </div>
+                            <div className="flex gap-1">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setConfirmDialog({
+                                  open: true,
+                                  type: "restore",
+                                  entityType: "supplier",
+                                  entityId: supplier.id,
+                                  entityName: supplier.name,
+                                })}
+                                data-testid={`button-restore-supplier-${supplier.id}`}
+                              >
+                                <RotateCcw className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                onClick={() => setConfirmDialog({
+                                  open: true,
+                                  type: "delete",
+                                  entityType: "supplier",
+                                  entityId: supplier.id,
+                                  entityName: supplier.name,
+                                })}
+                                data-testid={`button-delete-supplier-${supplier.id}`}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground py-2">No archived suppliers</p>
+                    )}
+                  </div>
+
+                  <Separator />
+
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2">
+                      <ShoppingCart className="h-4 w-4 text-muted-foreground" />
+                      <h3 className="font-medium">Archived Sales ({archivedData?.sales?.length || 0})</h3>
+                    </div>
+                    {archivedData?.sales && archivedData.sales.length > 0 ? (
+                      <div className="space-y-2">
+                        {archivedData.sales.map((sale) => (
+                          <div 
+                            key={sale.id} 
+                            className="flex items-center justify-between gap-4 p-3 rounded-lg border"
+                            data-testid={`archived-sale-${sale.id}`}
+                          >
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium truncate">{sale.saleNumber}</p>
+                              <p className="text-sm text-muted-foreground">{formatDate(sale.date)}</p>
+                            </div>
+                            <div className="text-right text-sm">
+                              <p>{formatCurrency(sale.totalAmount)}</p>
+                            </div>
+                            <div className="flex gap-1">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setConfirmDialog({
+                                  open: true,
+                                  type: "restore",
+                                  entityType: "sale",
+                                  entityId: sale.id,
+                                  entityName: sale.saleNumber,
+                                })}
+                                data-testid={`button-restore-sale-${sale.id}`}
+                              >
+                                <RotateCcw className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                onClick={() => setConfirmDialog({
+                                  open: true,
+                                  type: "delete",
+                                  entityType: "sale",
+                                  entityId: sale.id,
+                                  entityName: sale.saleNumber,
+                                })}
+                                data-testid={`button-delete-sale-${sale.id}`}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground py-2">No archived sales</p>
+                    )}
+                  </div>
+
+                  <Separator />
+
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2">
+                      <Package className="h-4 w-4 text-muted-foreground" />
+                      <h3 className="font-medium">Archived Purchases ({archivedData?.purchases?.length || 0})</h3>
+                    </div>
+                    {archivedData?.purchases && archivedData.purchases.length > 0 ? (
+                      <div className="space-y-2">
+                        {archivedData.purchases.map((purchase) => (
+                          <div 
+                            key={purchase.id} 
+                            className="flex items-center justify-between gap-4 p-3 rounded-lg border"
+                            data-testid={`archived-purchase-${purchase.id}`}
+                          >
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium truncate">{purchase.invoiceNumber}</p>
+                              <p className="text-sm text-muted-foreground">{formatDate(purchase.date)}</p>
+                            </div>
+                            <div className="text-right text-sm">
+                              <p>{formatCurrency(purchase.totalAmount)}</p>
+                            </div>
+                            <div className="flex gap-1">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setConfirmDialog({
+                                  open: true,
+                                  type: "restore",
+                                  entityType: "purchase",
+                                  entityId: purchase.id,
+                                  entityName: purchase.invoiceNumber,
+                                })}
+                                data-testid={`button-restore-purchase-${purchase.id}`}
+                              >
+                                <RotateCcw className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                onClick={() => setConfirmDialog({
+                                  open: true,
+                                  type: "delete",
+                                  entityType: "purchase",
+                                  entityId: purchase.id,
+                                  entityName: purchase.invoiceNumber,
+                                })}
+                                data-testid={`button-delete-purchase-${purchase.id}`}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground py-2">No archived purchases</p>
+                    )}
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 text-amber-500" />
+                Important Information
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm text-muted-foreground">
+              <p><strong>Restore:</strong> Returns the item to the main lists. All related transactions remain intact.</p>
+              <p><strong>Permanent Delete:</strong> Completely removes the item and all its related data (payments, transactions). This action cannot be undone.</p>
+            </CardContent>
+          </Card>
+        </TabsContent>
       </Tabs>
+
+      <AlertDialog open={confirmDialog?.open} onOpenChange={(open) => !open && setConfirmDialog(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {confirmDialog?.type === "restore" ? "Restore Item" : "Permanently Delete Item"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmDialog?.type === "restore" 
+                ? `Are you sure you want to restore "${confirmDialog?.entityName}"? It will be visible in the main lists again.`
+                : `Are you sure you want to permanently delete "${confirmDialog?.entityName}"? This will also delete all related payments and transactions. This action cannot be undone.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleArchiveAction}
+              className={confirmDialog?.type === "delete" ? "bg-destructive text-destructive-foreground hover:bg-destructive/90" : ""}
+              data-testid="button-confirm-action"
+            >
+              {confirmDialog?.type === "restore" ? "Restore" : "Delete Permanently"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Dialog open={currencyDialogOpen} onOpenChange={setCurrencyDialogOpen}>
         <DialogContent>
