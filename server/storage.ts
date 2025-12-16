@@ -11,9 +11,11 @@ import {
   type Payment, type InsertPayment,
   type CashRegisterSession, type InsertCashRegisterSession,
   type Expense, type InsertExpense,
+  type Currency, type InsertCurrency,
+  type Setting,
   users, products, items, customers, suppliers,
   purchaseInvoices, purchaseInvoiceItems, sales, saleItems,
-  payments, cashRegisterSessions, expenses,
+  payments, cashRegisterSessions, expenses, currencies, settings,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc } from "drizzle-orm";
@@ -81,6 +83,17 @@ export interface IStorage {
   getExpense(id: string): Promise<Expense | undefined>;
   createExpense(data: InsertExpense): Promise<Expense>;
   deleteExpense(id: string): Promise<void>;
+
+  getCurrencies(): Promise<Currency[]>;
+  getCurrency(id: string): Promise<Currency | undefined>;
+  getDefaultCurrency(): Promise<Currency | undefined>;
+  createCurrency(data: InsertCurrency): Promise<Currency>;
+  updateCurrency(id: string, data: Partial<InsertCurrency>): Promise<Currency>;
+  setDefaultCurrency(id: string): Promise<Currency>;
+  deleteCurrency(id: string): Promise<void>;
+
+  getSetting(key: string): Promise<Setting | undefined>;
+  setSetting(key: string, value: string): Promise<Setting>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -318,6 +331,58 @@ export class DatabaseStorage implements IStorage {
 
   async deleteExpense(id: string): Promise<void> {
     await db.update(expenses).set({ archived: true }).where(eq(expenses.id, id));
+  }
+
+  async getCurrencies(): Promise<Currency[]> {
+    return await db.select().from(currencies).where(eq(currencies.archived, false));
+  }
+
+  async getCurrency(id: string): Promise<Currency | undefined> {
+    const [currency] = await db.select().from(currencies).where(eq(currencies.id, id));
+    return currency || undefined;
+  }
+
+  async getDefaultCurrency(): Promise<Currency | undefined> {
+    const [currency] = await db.select().from(currencies).where(
+      and(eq(currencies.isDefault, true), eq(currencies.archived, false))
+    );
+    return currency || undefined;
+  }
+
+  async createCurrency(data: InsertCurrency): Promise<Currency> {
+    const [currency] = await db.insert(currencies).values(data).returning();
+    return currency;
+  }
+
+  async updateCurrency(id: string, data: Partial<InsertCurrency>): Promise<Currency> {
+    const [currency] = await db.update(currencies).set(data).where(eq(currencies.id, id)).returning();
+    return currency;
+  }
+
+  async setDefaultCurrency(id: string): Promise<Currency> {
+    await db.update(currencies).set({ isDefault: false }).where(eq(currencies.isDefault, true));
+    const [currency] = await db.update(currencies).set({ isDefault: true }).where(eq(currencies.id, id)).returning();
+    return currency;
+  }
+
+  async deleteCurrency(id: string): Promise<void> {
+    await db.update(currencies).set({ archived: true }).where(eq(currencies.id, id));
+  }
+
+  async getSetting(key: string): Promise<Setting | undefined> {
+    const [setting] = await db.select().from(settings).where(eq(settings.key, key));
+    return setting || undefined;
+  }
+
+  async setSetting(key: string, value: string): Promise<Setting> {
+    const existing = await this.getSetting(key);
+    if (existing) {
+      const [setting] = await db.update(settings).set({ value }).where(eq(settings.key, key)).returning();
+      return setting;
+    } else {
+      const [setting] = await db.insert(settings).values({ key, value }).returning();
+      return setting;
+    }
   }
 }
 

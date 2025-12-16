@@ -186,6 +186,25 @@ export const expenses = pgTable("expenses", {
   archived: boolean("archived").default(false),
 });
 
+// Currencies for multi-currency support
+export const currencies = pgTable("currencies", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  code: text("code").notNull().unique(), // ISO 4217 code (USD, EUR, SAR, etc.)
+  name: text("name").notNull(),
+  symbol: text("symbol").notNull(),
+  exchangeRate: integer("exchange_rate").notNull().default(10000), // Rate in 4 decimal (10000 = 1.0000)
+  isDefault: boolean("is_default").default(false),
+  decimals: integer("decimals").default(2),
+  archived: boolean("archived").default(false),
+});
+
+// System Settings
+export const settings = pgTable("settings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  key: text("key").notNull().unique(),
+  value: text("value").notNull(),
+});
+
 // Insert schemas
 export const insertUserSchema = createInsertSchema(users).omit({ id: true });
 export const insertProductSchema = createInsertSchema(products).omit({ id: true });
@@ -199,6 +218,8 @@ export const insertSaleItemSchema = createInsertSchema(saleItems).omit({ id: tru
 export const insertPaymentSchema = createInsertSchema(payments).omit({ id: true });
 export const insertCashRegisterSessionSchema = createInsertSchema(cashRegisterSessions).omit({ id: true });
 export const insertExpenseSchema = createInsertSchema(expenses).omit({ id: true });
+export const insertCurrencySchema = createInsertSchema(currencies).omit({ id: true });
+export const insertSettingSchema = createInsertSchema(settings).omit({ id: true });
 
 // Types
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -236,6 +257,12 @@ export type CashRegisterSession = typeof cashRegisterSessions.$inferSelect;
 
 export type InsertExpense = z.infer<typeof insertExpenseSchema>;
 export type Expense = typeof expenses.$inferSelect;
+
+export type InsertCurrency = z.infer<typeof insertCurrencySchema>;
+export type Currency = typeof currencies.$inferSelect;
+
+export type InsertSetting = z.infer<typeof insertSettingSchema>;
+export type Setting = typeof settings.$inferSelect;
 
 // Extended types for frontend
 export type ItemWithProduct = Item & { product: Product };

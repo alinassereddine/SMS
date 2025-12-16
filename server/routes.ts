@@ -14,6 +14,7 @@ import {
   insertPaymentSchema,
   insertCashRegisterSessionSchema,
   insertExpenseSchema,
+  insertCurrencySchema,
 } from "@shared/schema";
 import { z } from "zod";
 
@@ -792,6 +793,112 @@ export async function registerRoutes(
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ error: "Failed to delete expense" });
+    }
+  });
+
+  // ============ CURRENCIES ============
+  app.get("/api/currencies", async (req, res) => {
+    try {
+      const currencies = await storage.getCurrencies();
+      res.json(currencies);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch currencies" });
+    }
+  });
+
+  app.get("/api/currencies/default", async (req, res) => {
+    try {
+      const currency = await storage.getDefaultCurrency();
+      if (!currency) {
+        return res.status(404).json({ error: "No default currency set" });
+      }
+      res.json(currency);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch default currency" });
+    }
+  });
+
+  app.get("/api/currencies/:id", async (req, res) => {
+    try {
+      const currency = await storage.getCurrency(req.params.id);
+      if (!currency) return res.status(404).json({ error: "Currency not found" });
+      res.json(currency);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch currency" });
+    }
+  });
+
+  app.post("/api/currencies", requirePermission("settings:write"), async (req, res) => {
+    try {
+      const data = insertCurrencySchema.parse(req.body);
+      const currency = await storage.createCurrency(data);
+      res.status(201).json(currency);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      res.status(500).json({ error: "Failed to create currency" });
+    }
+  });
+
+  app.patch("/api/currencies/:id", requirePermission("settings:write"), async (req, res) => {
+    try {
+      const data = insertCurrencySchema.partial().parse(req.body);
+      const currency = await storage.updateCurrency(req.params.id, data);
+      res.json(currency);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      res.status(500).json({ error: "Failed to update currency" });
+    }
+  });
+
+  app.post("/api/currencies/:id/set-default", requirePermission("settings:write"), async (req, res) => {
+    try {
+      const currency = await storage.setDefaultCurrency(req.params.id);
+      res.json(currency);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to set default currency" });
+    }
+  });
+
+  app.delete("/api/currencies/:id", requirePermission("settings:write"), async (req, res) => {
+    try {
+      const currency = await storage.getCurrency(req.params.id);
+      if (currency?.isDefault) {
+        return res.status(400).json({ error: "Cannot delete default currency" });
+      }
+      await storage.deleteCurrency(req.params.id);
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete currency" });
+    }
+  });
+
+  // ============ SETTINGS ============
+  app.get("/api/settings/:key", async (req, res) => {
+    try {
+      const setting = await storage.getSetting(req.params.key);
+      if (!setting) {
+        return res.status(404).json({ error: "Setting not found" });
+      }
+      res.json(setting);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch setting" });
+    }
+  });
+
+  app.post("/api/settings/:key", requirePermission("settings:write"), async (req, res) => {
+    try {
+      const { value } = req.body;
+      if (typeof value !== "string") {
+        return res.status(400).json({ error: "Value must be a string" });
+      }
+      const setting = await storage.setSetting(req.params.key, value);
+      res.json(setting);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to save setting" });
     }
   });
 

@@ -46,6 +46,15 @@ Preferred communication style: Simple, everyday language.
 - **Payments**: Payment records linked to customers or suppliers
 - **Cash Register Sessions**: Daily cash management with opening/closing balances
 - **Expenses**: Business expense tracking by category
+- **Currencies**: Multi-currency support with exchange rate management
+
+### Multi-Currency Support
+The system supports multiple currencies with exchange rate conversion:
+- **Currency Schema**: `currencies` table with code, name, symbol, exchangeRate (fixed-point 10000 = 1.0), decimals, isDefault
+- **Exchange Rates**: Stored as integers scaled by 10000 (e.g., USD=10000, EUR=11000 means 1 EUR = 1.10 USD)
+- **CurrencyProvider**: React context providing `formatCurrency(cents)` and `convertCurrency(cents, fromCode, toCode)`
+- **Conversion Logic**: `result = cents * toCurrency.exchangeRate / fromCurrency.exchangeRate`
+- **Settings Page**: Currency tab for CRUD operations on currencies, including setting default currency
 
 ## External Dependencies
 
