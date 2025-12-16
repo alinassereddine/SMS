@@ -9,7 +9,6 @@ import { SearchInput } from "@/components/search-input";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import {
@@ -499,7 +498,7 @@ export default function Sales() {
           
           <div className="flex-1 overflow-y-auto space-y-4 pr-2">
             <div className="space-y-2">
-              <Label>Customer</Label>
+              <span className="text-sm font-medium">Customer</span>
               <Select 
                 value={editCustomerId || "walk-in"} 
                 onValueChange={(v) => setEditCustomerId(v === "walk-in" ? null : v)}
@@ -521,7 +520,7 @@ export default function Sales() {
 
             <div className="space-y-2">
               <div className="flex items-center justify-between gap-2">
-                <Label>Items ({editItems.length})</Label>
+                <span className="text-sm font-medium">Items ({editItems.length})</span>
                 <Button 
                   variant="outline" 
                   size="sm" 
@@ -573,7 +572,7 @@ export default function Sales() {
             {showAddItem && (
               <div className="space-y-2 p-3 border rounded-lg bg-card">
                 <div className="flex items-center justify-between gap-2">
-                  <Label>Add Available Item</Label>
+                  <span className="text-sm font-medium">Add Available Item</span>
                   <Button variant="ghost" size="sm" onClick={() => setShowAddItem(false)}>
                     <X className="h-4 w-4" />
                   </Button>
@@ -615,17 +614,17 @@ export default function Sales() {
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Discount</Label>
+                <span className="text-sm font-medium">Discount</span>
                 <CurrencyInput value={editDiscount} onChange={setEditDiscount} />
               </div>
               <div className="space-y-2">
-                <Label>Paid Amount</Label>
+                <span className="text-sm font-medium">Paid Amount</span>
                 <CurrencyInput value={editPaidAmount} onChange={setEditPaidAmount} />
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label>Notes</Label>
+              <span className="text-sm font-medium">Notes</span>
               <Textarea
                 value={editNotes}
                 onChange={(e) => setEditNotes(e.target.value)}

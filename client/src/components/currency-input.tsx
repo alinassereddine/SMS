@@ -8,6 +8,7 @@ interface CurrencyInputProps {
   placeholder?: string;
   className?: string;
   disabled?: boolean;
+  id?: string;
 }
 
 export function CurrencyInput({ 
@@ -16,6 +17,7 @@ export function CurrencyInput({
   placeholder = "0.00", 
   className,
   disabled = false,
+  id,
 }: CurrencyInputProps) {
   const [displayValue, setDisplayValue] = useState("");
 
@@ -50,6 +52,7 @@ export function CurrencyInput({
     <div className="relative">
       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
       <Input
+        id={id}
         type="text"
         inputMode="decimal"
         placeholder={placeholder}

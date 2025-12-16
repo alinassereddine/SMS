@@ -32,7 +32,6 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
@@ -668,7 +667,7 @@ export default function Purchases() {
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>Supplier</Label>
+              <span className="text-sm font-medium">Supplier</span>
               <Select value={editSupplierId} onValueChange={setEditSupplierId}>
                 <SelectTrigger data-testid="select-edit-supplier">
                   <SelectValue placeholder="Select supplier" />
@@ -685,7 +684,7 @@ export default function Purchases() {
 
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <Label>Items ({editItems.length})</Label>
+                <span className="text-sm font-medium">Items ({editItems.length})</span>
                 <Button
                   type="button"
                   variant="outline"
@@ -794,7 +793,7 @@ export default function Purchases() {
             </div>
 
             <div className="space-y-2">
-              <Label>Discount</Label>
+              <span className="text-sm font-medium">Discount</span>
               <CurrencyInput value={editDiscount} onChange={setEditDiscount} />
             </div>
 
@@ -804,7 +803,7 @@ export default function Purchases() {
             </div>
 
             <div className="space-y-2">
-              <Label>Amount Paid</Label>
+              <span className="text-sm font-medium">Amount Paid</span>
               <CurrencyInput value={editPaidAmount} onChange={setEditPaidAmount} />
             </div>
 
@@ -816,7 +815,7 @@ export default function Purchases() {
             )}
 
             <div className="space-y-2">
-              <Label>Notes</Label>
+              <span className="text-sm font-medium">Notes</span>
               <Textarea
                 value={editNotes}
                 onChange={(e) => setEditNotes(e.target.value)}
