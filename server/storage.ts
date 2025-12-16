@@ -92,6 +92,7 @@ export interface IStorage {
   getPayment(id: string): Promise<Payment | undefined>;
   getPaymentsByEntity(type: string, entityId: string): Promise<Payment[]>;
   createPayment(data: InsertPayment): Promise<Payment>;
+  updatePayment(id: string, data: Partial<InsertPayment>): Promise<Payment>;
 
   getCashRegisterSessions(): Promise<CashRegisterSession[]>;
   getCashRegisterSession(id: string): Promise<CashRegisterSession | undefined>;
@@ -412,6 +413,11 @@ export class DatabaseStorage implements IStorage {
 
   async createPayment(data: InsertPayment): Promise<Payment> {
     const [payment] = await db.insert(payments).values(data).returning();
+    return payment;
+  }
+
+  async updatePayment(id: string, data: Partial<InsertPayment>): Promise<Payment> {
+    const [payment] = await db.update(payments).set(data).where(eq(payments.id, id)).returning();
     return payment;
   }
 

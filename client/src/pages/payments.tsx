@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Wallet, MoreHorizontal, Eye, User, Truck } from "lucide-react";
+import { Plus, Wallet, MoreHorizontal, Eye, User, Truck, Pencil } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { DataTable, Column } from "@/components/data-table";
 import { SearchInput } from "@/components/search-input";
@@ -30,6 +30,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -63,6 +64,12 @@ export default function Payments() {
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<"all" | "customer" | "supplier">("all");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [editPayment, setEditPayment] = useState<PaymentWithEntity | null>(null);
+  const [editDate, setEditDate] = useState<string>("");
+  const [editAmount, setEditAmount] = useState(0);
+  const [editPaymentMethod, setEditPaymentMethod] = useState<string>("cash");
+  const [editReference, setEditReference] = useState("");
+  const [editNotes, setEditNotes] = useState("");
   const { toast } = useToast();
 
   const { data: payments = [], isLoading } = useQuery<PaymentWithEntity[]>({
@@ -112,6 +119,45 @@ export default function Payments() {
 
   const handleSubmit = (data: PaymentFormValues) => {
     createMutation.mutate(data);
+  };
+
+  const editMutation = useMutation({
+    mutationFn: async (data: { id: string; updates: { date?: string; amount?: number; paymentMethod?: string; reference?: string | null; notes?: string | null } }) => {
+      return apiRequest("PATCH", `/api/payments/${data.id}`, data.updates);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/suppliers"] });
+      setEditPayment(null);
+      toast({ title: "Payment updated successfully" });
+    },
+    onError: (error: any) => {
+      toast({ title: error.message || "Failed to update payment", variant: "destructive" });
+    },
+  });
+
+  const handleOpenEdit = (payment: PaymentWithEntity) => {
+    setEditPayment(payment);
+    setEditDate(new Date(payment.date).toISOString().split("T")[0]);
+    setEditAmount(payment.amount);
+    setEditPaymentMethod(payment.paymentMethod);
+    setEditReference(payment.reference || "");
+    setEditNotes(payment.notes || "");
+  };
+
+  const handleSaveEdit = () => {
+    if (!editPayment) return;
+    editMutation.mutate({
+      id: editPayment.id,
+      updates: {
+        date: editDate,
+        amount: editAmount,
+        paymentMethod: editPaymentMethod,
+        reference: editReference || null,
+        notes: editNotes || null,
+      },
+    });
   };
 
   const filteredPayments = payments.filter((payment) => {
@@ -210,6 +256,10 @@ export default function Payments() {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => handleOpenEdit(payment)}>
+              <Pencil className="h-4 w-4 mr-2" />
+              Edit
+            </DropdownMenuItem>
             <DropdownMenuItem>
               <Eye className="h-4 w-4 mr-2" />
               View Details
@@ -463,6 +513,81 @@ export default function Payments() {
               </DialogFooter>
             </form>
           </Form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!editPayment} onOpenChange={() => setEditPayment(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Payment</DialogTitle>
+            <DialogDescription>
+              Edit payment to {editPayment?.entity?.name || "Unknown"}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <span className="text-sm font-medium">Date</span>
+                <Input
+                  type="date"
+                  value={editDate}
+                  onChange={(e) => setEditDate(e.target.value)}
+                  data-testid="input-edit-date"
+                />
+              </div>
+              <div className="space-y-2">
+                <span className="text-sm font-medium">Amount</span>
+                <CurrencyInput
+                  value={editAmount}
+                  onChange={setEditAmount}
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <span className="text-sm font-medium">Payment Method</span>
+              <Select value={editPaymentMethod} onValueChange={setEditPaymentMethod}>
+                <SelectTrigger data-testid="select-edit-payment-method">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cash">Cash</SelectItem>
+                  <SelectItem value="card">Card</SelectItem>
+                  <SelectItem value="transfer">Bank Transfer</SelectItem>
+                  <SelectItem value="check">Check</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <span className="text-sm font-medium">Reference</span>
+              <Input
+                value={editReference}
+                onChange={(e) => setEditReference(e.target.value)}
+                placeholder="Check number, transfer ref..."
+                data-testid="input-edit-reference"
+              />
+            </div>
+            <div className="space-y-2">
+              <span className="text-sm font-medium">Notes</span>
+              <Textarea
+                value={editNotes}
+                onChange={(e) => setEditNotes(e.target.value)}
+                placeholder="Add notes..."
+                data-testid="input-edit-notes"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditPayment(null)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleSaveEdit}
+              disabled={editMutation.isPending}
+              data-testid="button-save-edit"
+            >
+              {editMutation.isPending ? "Saving..." : "Save Changes"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

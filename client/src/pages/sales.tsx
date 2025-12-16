@@ -56,6 +56,7 @@ export default function Sales() {
   const [editSale, setEditSale] = useState<SaleWithCustomer | null>(null);
   const [editItems, setEditItems] = useState<EditItem[]>([]);
   const [editCustomerId, setEditCustomerId] = useState<string | null>(null);
+  const [editDate, setEditDate] = useState<string>("");
   const [editDiscount, setEditDiscount] = useState(0);
   const [editPaidAmount, setEditPaidAmount] = useState(0);
   const [editNotes, setEditNotes] = useState("");
@@ -131,6 +132,7 @@ export default function Sales() {
       })) || []
     );
     setEditCustomerId(sale.customerId || null);
+    setEditDate(new Date(sale.date).toISOString().split("T")[0]);
     setEditDiscount(sale.discountAmount || 0);
     setEditPaidAmount(sale.paidAmount || 0);
     setEditNotes(sale.notes || "");
@@ -173,6 +175,7 @@ export default function Sales() {
       id: editSale.id,
       data: {
         customerId: editCustomerId,
+        date: editDate,
         discountAmount: editDiscount,
         paidAmount: editPaidAmount,
         notes: editNotes || null,
@@ -497,25 +500,36 @@ export default function Sales() {
           </DialogHeader>
           
           <div className="flex-1 overflow-y-auto space-y-4 pr-2">
-            <div className="space-y-2">
-              <span className="text-sm font-medium">Customer</span>
-              <Select 
-                value={editCustomerId || "walk-in"} 
-                onValueChange={(v) => setEditCustomerId(v === "walk-in" ? null : v)}
-              >
-                <SelectTrigger data-testid="select-edit-customer">
-                  <SelectValue placeholder="Select customer" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="walk-in">Walk-in Customer</SelectItem>
-                  {customers.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {editBalance > 0 && !editCustomerId && (
-                <p className="text-xs text-destructive">Customer required for credit/partial sales</p>
-              )}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <span className="text-sm font-medium">Customer</span>
+                <Select 
+                  value={editCustomerId || "walk-in"} 
+                  onValueChange={(v) => setEditCustomerId(v === "walk-in" ? null : v)}
+                >
+                  <SelectTrigger data-testid="select-edit-customer">
+                    <SelectValue placeholder="Select customer" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="walk-in">Walk-in Customer</SelectItem>
+                    {customers.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {editBalance > 0 && !editCustomerId && (
+                  <p className="text-xs text-destructive">Customer required for credit/partial sales</p>
+                )}
+              </div>
+              <div className="space-y-2">
+                <span className="text-sm font-medium">Date</span>
+                <Input
+                  type="date"
+                  value={editDate}
+                  onChange={(e) => setEditDate(e.target.value)}
+                  data-testid="input-edit-date"
+                />
+              </div>
             </div>
 
             <div className="space-y-2">

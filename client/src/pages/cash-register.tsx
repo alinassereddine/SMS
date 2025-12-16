@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { CreditCard, DollarSign, Clock, CheckCircle, AlertCircle, Play, Square } from "lucide-react";
+import { CreditCard, DollarSign, Clock, CheckCircle, AlertCircle, Play, Square, MoreHorizontal, Pencil } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { DataTable, Column } from "@/components/data-table";
 import { StatusBadge } from "@/components/status-badge";
@@ -17,6 +17,13 @@ import {
 import { CurrencyInput } from "@/components/currency-input";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
+import { Input } from "@/components/ui/input";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { formatCurrency, formatDateTime, generateSessionNumber } from "@/lib/utils";
@@ -28,6 +35,8 @@ export default function CashRegister() {
   const [openingBalance, setOpeningBalance] = useState(0);
   const [actualBalance, setActualBalance] = useState(0);
   const [closeNotes, setCloseNotes] = useState("");
+  const [editSession, setEditSession] = useState<CashRegisterSession | null>(null);
+  const [editDate, setEditDate] = useState<string>("");
   const { toast } = useToast();
 
   const { data: sessions = [], isLoading } = useQuery<CashRegisterSession[]>({
@@ -86,6 +95,31 @@ export default function CashRegister() {
     } else {
       setIsOpenDialogOpen(true);
     }
+  };
+
+  const editDateMutation = useMutation({
+    mutationFn: async (data: { id: string; openedAt: string }) => {
+      return apiRequest("PATCH", `/api/cash-register/${data.id}/date`, { openedAt: data.openedAt });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/cash-register"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cash-register/active"] });
+      setEditSession(null);
+      toast({ title: "Session date updated" });
+    },
+    onError: (error: any) => {
+      toast({ title: error.message || "Failed to update session date", variant: "destructive" });
+    },
+  });
+
+  const handleOpenEditDate = (session: CashRegisterSession) => {
+    setEditSession(session);
+    setEditDate(new Date(session.openedAt).toISOString().split("T")[0]);
+  };
+
+  const handleSaveEditDate = () => {
+    if (!editSession) return;
+    editDateMutation.mutate({ id: editSession.id, openedAt: editDate });
   };
 
   const columns: Column<CashRegisterSession>[] = [
@@ -163,6 +197,26 @@ export default function CashRegister() {
         <span className="text-sm text-muted-foreground">
           {session.closedAt ? formatDateTime(session.closedAt) : "-"}
         </span>
+      ),
+    },
+    {
+      key: "actions",
+      header: "",
+      className: "w-12",
+      render: (session) => (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" data-testid={`button-actions-${session.id}`}>
+              <MoreHorizontal className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => handleOpenEditDate(session)}>
+              <Pencil className="h-4 w-4 mr-2" />
+              Edit Date
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       ),
     },
   ];
@@ -385,6 +439,41 @@ export default function CashRegister() {
               data-testid="button-confirm-close"
             >
               {closeSessionMutation.isPending ? "Closing..." : "Close Session"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!editSession} onOpenChange={() => setEditSession(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Session Date</DialogTitle>
+            <DialogDescription>
+              Edit the opening date for session{" "}
+              <span className="font-mono font-medium">{editSession?.sessionNumber}</span>
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <span className="text-sm font-medium">Opening Date</span>
+              <Input
+                type="date"
+                value={editDate}
+                onChange={(e) => setEditDate(e.target.value)}
+                data-testid="input-edit-date"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditSession(null)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleSaveEditDate}
+              disabled={editDateMutation.isPending}
+              data-testid="button-save-edit-date"
+            >
+              {editDateMutation.isPending ? "Saving..." : "Save Changes"}
             </Button>
           </DialogFooter>
         </DialogContent>

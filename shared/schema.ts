@@ -268,6 +268,7 @@ export type Setting = typeof settings.$inferSelect;
 // Update schemas for comprehensive editing
 export const updateSaleFullSchema = z.object({
   customerId: z.string().nullable().optional(),
+  date: z.string().optional(), // ISO date string for date editing
   discountAmount: z.number().min(0).optional(),
   paidAmount: z.number().min(0).optional(),
   paymentMethod: z.string().optional(),
@@ -282,6 +283,7 @@ export type UpdateSaleFull = z.infer<typeof updateSaleFullSchema>;
 
 export const updatePurchaseInvoiceFullSchema = z.object({
   supplierId: z.string().min(1, "Supplier is required"),
+  date: z.string().optional(), // ISO date string for date editing
   discountAmount: z.number().min(0).optional(),
   paidAmount: z.number().min(0).optional(),
   notes: z.string().nullable().optional(),
@@ -292,6 +294,24 @@ export const updatePurchaseInvoiceFullSchema = z.object({
     unitPrice: z.number().min(0),
   })).min(1, "Purchase must have at least one item"),
 });
+
+// Schema for updating payment (date editing and other fields)
+export const updatePaymentSchema = z.object({
+  date: z.string().optional(), // ISO date string for date editing
+  amount: z.number().min(1).optional(),
+  paymentMethod: z.enum(["cash", "card", "transfer", "check"]).optional(),
+  reference: z.string().nullable().optional(),
+  notes: z.string().nullable().optional(),
+});
+
+export type UpdatePayment = z.infer<typeof updatePaymentSchema>;
+
+// Schema for updating cash register session (open date editing)
+export const updateCashRegisterSessionDateSchema = z.object({
+  openedAt: z.string(), // ISO date string for open date editing
+});
+
+export type UpdateCashRegisterSessionDate = z.infer<typeof updateCashRegisterSessionDateSchema>;
 
 export type UpdatePurchaseInvoiceFull = z.infer<typeof updatePurchaseInvoiceFullSchema>;
 

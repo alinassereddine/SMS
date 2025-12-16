@@ -17,6 +17,8 @@ import {
   insertCurrencySchema,
   updateSaleFullSchema,
   updatePurchaseInvoiceFullSchema,
+  updatePaymentSchema,
+  updateCashRegisterSessionDateSchema,
 } from "@shared/schema";
 import { z } from "zod";
 
@@ -1032,6 +1034,7 @@ export async function registerRoutes(
       // 6. Update sale record
       const updatedSale = await storage.updateSale(sale.id, {
         customerId: newCustomerId,
+        date: data.date ? new Date(data.date) : sale.date,
         subtotal: newSubtotal,
         discountAmount: discountAmount,
         totalAmount: newTotal,
@@ -1509,6 +1512,7 @@ export async function registerRoutes(
       // 7. Update invoice record
       const updatedInvoice = await storage.updatePurchaseInvoice(invoice.id, {
         supplierId: newSupplierId,
+        date: data.date ? new Date(data.date) : invoice.date,
         subtotal: newSubtotal,
         discountAmount: discountAmount,
         totalAmount: newTotal,
@@ -1595,6 +1599,63 @@ export async function registerRoutes(
         return res.status(400).json({ error: error.errors });
       }
       res.status(500).json({ error: "Failed to create payment" });
+    }
+  });
+
+  // Update payment (date editing)
+  app.patch("/api/payments/:id", requirePermission("payments:write"), async (req, res) => {
+    try {
+      const payment = await storage.getPayment(req.params.id);
+      if (!payment) return res.status(404).json({ error: "Payment not found" });
+
+      const data = updatePaymentSchema.parse(req.body);
+      
+      const updateData: any = {};
+      if (data.date) {
+        updateData.date = new Date(data.date);
+      }
+      if (data.amount !== undefined) {
+        // Handle amount change - need to adjust entity balance
+        const amountDiff = data.amount - payment.amount;
+        if (amountDiff !== 0) {
+          const isRefund = payment.transactionType === "refund";
+          const balanceChange = isRefund ? amountDiff : -amountDiff;
+          
+          if (payment.type === "customer") {
+            const customer = await storage.getCustomer(payment.entityId);
+            if (customer) {
+              await storage.updateCustomer(payment.entityId, {
+                balance: (customer.balance || 0) + balanceChange,
+              });
+            }
+          } else if (payment.type === "supplier") {
+            const supplier = await storage.getSupplier(payment.entityId);
+            if (supplier) {
+              await storage.updateSupplier(payment.entityId, {
+                balance: (supplier.balance || 0) + balanceChange,
+              });
+            }
+          }
+          updateData.amount = data.amount;
+        }
+      }
+      if (data.paymentMethod !== undefined) {
+        updateData.paymentMethod = data.paymentMethod;
+      }
+      if (data.reference !== undefined) {
+        updateData.reference = data.reference;
+      }
+      if (data.notes !== undefined) {
+        updateData.notes = data.notes;
+      }
+
+      const updated = await storage.updatePayment(payment.id, updateData);
+      res.json(updated);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      res.status(500).json({ error: "Failed to update payment" });
     }
   });
 
@@ -1705,6 +1766,27 @@ export async function registerRoutes(
       res.json(updatedSession);
     } catch (error) {
       res.status(500).json({ error: "Failed to close session" });
+    }
+  });
+
+  // Update cash register session open date
+  app.patch("/api/cash-register/:id/date", requirePermission("cash_register:write"), async (req, res) => {
+    try {
+      const session = await storage.getCashRegisterSession(req.params.id);
+      if (!session) return res.status(404).json({ error: "Session not found" });
+
+      const data = updateCashRegisterSessionDateSchema.parse(req.body);
+      
+      const updatedSession = await storage.updateCashRegisterSession(session.id, {
+        openedAt: new Date(data.openedAt),
+      });
+
+      res.json(updatedSession);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      res.status(500).json({ error: "Failed to update session date" });
     }
   });
 

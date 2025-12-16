@@ -80,6 +80,7 @@ export default function Purchases() {
   const [editInvoice, setEditInvoice] = useState<PurchaseInvoiceWithSupplier | null>(null);
   const [editItems, setEditItems] = useState<EditItem[]>([]);
   const [editSupplierId, setEditSupplierId] = useState<string>("");
+  const [editDate, setEditDate] = useState<string>("");
   const [editDiscount, setEditDiscount] = useState(0);
   const [editPaidAmount, setEditPaidAmount] = useState(0);
   const [editNotes, setEditNotes] = useState("");
@@ -196,6 +197,7 @@ export default function Purchases() {
       })) || []
     );
     setEditSupplierId(invoice.supplierId);
+    setEditDate(new Date(invoice.date).toISOString().split("T")[0]);
     setEditDiscount(invoice.discountAmount || 0);
     setEditPaidAmount(invoice.paidAmount || 0);
     setEditNotes(invoice.notes || "");
@@ -245,6 +247,7 @@ export default function Purchases() {
       id: editInvoice.id,
       data: {
         supplierId: editSupplierId,
+        date: editDate,
         discountAmount: editDiscount,
         paidAmount: editPaidAmount,
         notes: editNotes || null,
@@ -666,20 +669,31 @@ export default function Purchases() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="space-y-2">
-              <span className="text-sm font-medium">Supplier</span>
-              <Select value={editSupplierId} onValueChange={setEditSupplierId}>
-                <SelectTrigger data-testid="select-edit-supplier">
-                  <SelectValue placeholder="Select supplier" />
-                </SelectTrigger>
-                <SelectContent>
-                  {suppliers.map((supplier) => (
-                    <SelectItem key={supplier.id} value={supplier.id}>
-                      {supplier.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <span className="text-sm font-medium">Supplier</span>
+                <Select value={editSupplierId} onValueChange={setEditSupplierId}>
+                  <SelectTrigger data-testid="select-edit-supplier">
+                    <SelectValue placeholder="Select supplier" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {suppliers.map((supplier) => (
+                      <SelectItem key={supplier.id} value={supplier.id}>
+                        {supplier.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <span className="text-sm font-medium">Date</span>
+                <Input
+                  type="date"
+                  value={editDate}
+                  onChange={(e) => setEditDate(e.target.value)}
+                  data-testid="input-edit-date"
+                />
+              </div>
             </div>
 
             <div className="space-y-3">
