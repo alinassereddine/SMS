@@ -61,6 +61,7 @@ A comprehensive business management system for retail operations, specifically d
    DATABASE_URL=postgresql://...
    SESSION_SECRET=your-secret-key
    ```
+   For local development you can copy `.env.example` to `.env` and fill in values.
 4. Run database migrations:
    ```bash
    npm run db:push
