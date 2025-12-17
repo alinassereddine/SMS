@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Users, MoreHorizontal, Pencil, Trash2, Phone, Mail, MapPin, Eye } from "lucide-react";
+import { Plus, MoreHorizontal, Pencil, Trash2, Phone, Eye, Upload, Download } from "lucide-react";
 import { Link } from "wouter";
 import { PageHeader } from "@/components/page-header";
 import { DataTable, Column } from "@/components/data-table";
@@ -55,6 +55,8 @@ export default function Customers() {
   const [search, setSearch] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
+  const [isImporting, setIsImporting] = useState(false);
+  const importInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const { can } = useAuth();
 
@@ -155,6 +157,92 @@ export default function Customers() {
   const canSeeBalance = can("customers:balance");
   const canSeeDetails = can("customers:details");
   const canDelete = can("customers:delete");
+  const canImport = can("customers:write");
+
+  const downloadTemplate = () => {
+    const header = ["name", "phone", "email", "address", "notes", "balance"];
+    const example = [
+      "Walk-in Customer",
+      "",
+      "",
+      "",
+      "",
+      "0",
+    ];
+    const example2 = [
+      "Ahmed Hassan",
+      "+966501234567",
+      "ahmed@email.com",
+      "Riyadh",
+      "VIP",
+      "250000",
+    ];
+
+    const csv = [header, example, example2]
+      .map((row) =>
+        row
+          .map((cell) => {
+            const value = String(cell ?? "");
+            const escaped = value.replace(/\"/g, '""');
+            return `"${escaped}"`;
+          })
+          .join(","),
+      )
+      .join("\n");
+
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "customers-import-template.csv";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportFile = async (file: File) => {
+    setIsImporting(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await fetch("/api/customers/import", {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
+
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast({
+          title: "Import failed",
+          description: body?.error || "Failed to import customers",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
+      const imported = body?.imported ?? 0;
+      const totalRows = body?.totalRows ?? 0;
+      const errorsCount = Array.isArray(body?.errors) ? body.errors.length : 0;
+
+      toast({
+        title: "Import completed",
+        description: `Imported ${imported} of ${totalRows} rows${errorsCount ? ` (${errorsCount} errors)` : ""}.`,
+      });
+    } catch {
+      toast({
+        title: "Import failed",
+        description: "Failed to import customers",
+        variant: "destructive",
+      });
+    } finally {
+      setIsImporting(false);
+      if (importInputRef.current) importInputRef.current.value = "";
+    }
+  };
 
   const allColumns: Column<Customer>[] = [
     {
@@ -260,10 +348,38 @@ export default function Customers() {
   return (
     <div className="space-y-6">
       <PageHeader title="Customers" description="Manage your customer database">
-        <Button onClick={() => handleOpenDialog()} data-testid="button-add-customer">
-          <Plus className="h-4 w-4 mr-2" />
-          Add Customer
-        </Button>
+        <div className="flex items-center gap-2">
+          {canImport && (
+            <>
+              <input
+                ref={importInputRef}
+                type="file"
+                accept=".xlsx,.csv"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) void handleImportFile(file);
+                }}
+              />
+              <Button variant="outline" onClick={downloadTemplate}>
+                <Download className="h-4 w-4 mr-2" />
+                Template
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => importInputRef.current?.click()}
+                disabled={isImporting}
+              >
+                <Upload className="h-4 w-4 mr-2" />
+                {isImporting ? "Importing..." : "Import"}
+              </Button>
+            </>
+          )}
+          <Button onClick={() => handleOpenDialog()} data-testid="button-add-customer">
+            <Plus className="h-4 w-4 mr-2" />
+            Add Customer
+          </Button>
+        </div>
       </PageHeader>
 
       <div className="flex items-center gap-4">

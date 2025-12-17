@@ -21,11 +21,17 @@ import {
   updateCashRegisterSessionDateSchema,
 } from "@shared/schema";
 import { z } from "zod";
+import multer from "multer";
+import { parseCustomersImport, parseSuppliersImport } from "./import";
 
 export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+  const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 10 * 1024 * 1024 },
+  });
 
   // Apply authentication to all API routes except auth endpoints
   app.use("/api", (req, res, next) => {
@@ -220,6 +226,32 @@ export async function registerRoutes(
     }
   });
 
+  app.post(
+    "/api/customers/import",
+    requirePermission("customers:write"),
+    upload.single("file"),
+    async (req, res) => {
+      try {
+        if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+
+        const { records, result } = parseCustomersImport(
+          req.file.buffer,
+          req.file.originalname,
+        );
+
+        if (records.length > 0) {
+          for (const record of records) {
+            await storage.createCustomer(record);
+          }
+        }
+
+        res.status(200).json(result);
+      } catch (error) {
+        res.status(500).json({ error: "Failed to import customers" });
+      }
+    },
+  );
+
   app.patch("/api/customers/:id", requirePermission("customers:write"), async (req, res) => {
     try {
       const data = insertCustomerSchema.partial().parse(req.body);
@@ -402,6 +434,32 @@ export async function registerRoutes(
       res.status(500).json({ error: "Failed to create supplier" });
     }
   });
+
+  app.post(
+    "/api/suppliers/import",
+    requirePermission("suppliers:write"),
+    upload.single("file"),
+    async (req, res) => {
+      try {
+        if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+
+        const { records, result } = parseSuppliersImport(
+          req.file.buffer,
+          req.file.originalname,
+        );
+
+        if (records.length > 0) {
+          for (const record of records) {
+            await storage.createSupplier(record);
+          }
+        }
+
+        res.status(200).json(result);
+      } catch (error) {
+        res.status(500).json({ error: "Failed to import suppliers" });
+      }
+    },
+  );
 
   app.patch("/api/suppliers/:id", requirePermission("suppliers:write"), async (req, res) => {
     try {
