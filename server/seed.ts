@@ -1,16 +1,20 @@
 import { db } from "./db";
 import { users, products, customers, suppliers } from "@shared/schema";
+import { eq } from "drizzle-orm";
 
 export async function seedDatabase() {
-  const existingAdmin = await db.select().from(users).limit(1);
+  const desiredAdminUsername = "alinasseredine@gmail.com";
+  const desiredAdminPassword = "admin1230";
+
+  const [existingAnyUser] = await db.select().from(users).limit(1);
   
-  if (existingAdmin.length === 0) {
+  if (!existingAnyUser) {
     console.log("Seeding database with initial data...");
     
     await db.insert(users).values([
       {
-        username: "admin",
-        password: "admin123",
+        username: desiredAdminUsername,
+        password: desiredAdminPassword,
         displayName: "Administrator",
         role: "admin",
         permissions: [],
@@ -52,6 +56,57 @@ export async function seedDatabase() {
 
     console.log("Database seeded successfully!");
   } else {
-    console.log("Database already has data, skipping seed.");
+    const [adminByEmail] = await db
+      .select()
+      .from(users)
+      .where(eq(users.username, desiredAdminUsername))
+      .limit(1);
+
+    if (adminByEmail) {
+      await db
+        .update(users)
+        .set({
+          password: desiredAdminPassword,
+          displayName: "Administrator",
+          role: "admin",
+          permissions: [],
+          archived: false,
+        })
+        .where(eq(users.id, adminByEmail.id));
+      console.log("Admin user updated.");
+      return;
+    }
+
+    const [legacyAdmin] = await db
+      .select()
+      .from(users)
+      .where(eq(users.username, "admin"))
+      .limit(1);
+
+    if (legacyAdmin) {
+      await db
+        .update(users)
+        .set({
+          username: desiredAdminUsername,
+          password: desiredAdminPassword,
+          displayName: "Administrator",
+          role: "admin",
+          permissions: [],
+          archived: false,
+        })
+        .where(eq(users.id, legacyAdmin.id));
+      console.log("Legacy admin renamed and updated.");
+      return;
+    }
+
+    await db.insert(users).values({
+      username: desiredAdminUsername,
+      password: desiredAdminPassword,
+      displayName: "Administrator",
+      role: "admin",
+      permissions: [],
+    });
+
+    console.log("Admin user created.");
   }
 }
