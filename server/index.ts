@@ -7,6 +7,9 @@ import { setupAuth } from "./auth";
 const app = express();
 const httpServer = createServer(app);
 
+// Needed for secure cookies/sessions behind proxies (Cloud Run, Render, etc.).
+app.set("trust proxy", 1);
+
 declare module "http" {
   interface IncomingMessage {
     rawBody: unknown;

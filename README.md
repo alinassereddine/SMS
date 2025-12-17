@@ -72,6 +72,26 @@ A comprehensive business management system for retail operations, specifically d
 
 The application will be available at `http://localhost:5000`
 
+## Deploy (Single Cloud Run Service + Neon Postgres)
+
+This repo already serves the built frontend from the Express server in production, so you can deploy **one** Cloud Run service that hosts both the API and the static frontend.
+
+### 1) Create Neon DB (pooled connection string)
+- Create a Neon project/database.
+- Copy the **pooled/transaction** connection string and use it as `DATABASE_URL` (this helps avoid connection spikes when Cloud Run scales).
+
+### 2) Build & deploy to Cloud Run
+
+This repo includes a `Dockerfile` that builds the client + server and runs `dist/index.cjs`.
+
+Set Cloud Run environment variables:
+- `DATABASE_URL` = Neon pooled connection string
+- `SESSION_SECRET` = long random string
+- (Cloud Run provides `PORT=8080` automatically)
+
+Notes:
+- `server/index.ts` sets `app.set("trust proxy", 1)` so `cookie.secure: true` sessions work correctly behind Cloud Run’s proxy.
+
 ## Project Structure
 
 ```
