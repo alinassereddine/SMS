@@ -6,9 +6,11 @@ import {
   insertPurchaseInvoiceSchema,
   insertSaleSchema,
   insertPaymentSchema,
+  insertExpenseSchema,
   type InsertPurchaseInvoice,
   type InsertSale,
   type InsertPayment,
+  type InsertExpense,
   type InsertProduct,
   type InsertCustomer,
   type InsertSupplier,
@@ -66,6 +68,78 @@ type SaleImportSale = {
   notes?: string;
   items: { imei: string; unitPrice: number }[];
 };
+
+export function parseExpensesImport(buffer: Buffer, filename: string): {
+  records: InsertExpense[];
+  result: ImportResult;
+} {
+  const { rows } = readRowsFromFile(buffer, filename);
+  const headerRow = rows[0] ?? [];
+  const headerIndex = buildHeaderIndex(headerRow);
+
+  const errors: ImportError[] = [];
+  const records: InsertExpense[] = [];
+
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i] as unknown[];
+    const rowNumber = i + 1;
+
+    const description = asRequiredString(getCell(row, headerIndex, "description"));
+    const category = asRequiredString(getCell(row, headerIndex, "category"));
+    const amount = parseMoneyToCents(getCell(row, headerIndex, "amount"));
+    const paymentMethod = asOptionalString(getCell(row, headerIndex, "paymentmethod")) ?? "cash";
+    const date = asOptionalString(getCell(row, headerIndex, "date"));
+    const reference = asOptionalString(getCell(row, headerIndex, "reference"));
+    const notes = asOptionalString(getCell(row, headerIndex, "notes"));
+
+    if (!description) {
+      errors.push({ row: rowNumber, message: "Description is required" });
+      continue;
+    }
+    if (!category) {
+      errors.push({ row: rowNumber, message: "Category is required" });
+      continue;
+    }
+    if (amount === undefined) {
+      errors.push({ row: rowNumber, message: "Amount is required" });
+      continue;
+    }
+
+    const payload: Partial<InsertExpense> = {
+      description,
+      category,
+      amount,
+      paymentMethod: paymentMethod as any,
+      reference,
+      notes,
+      cashRegisterSessionId: null,
+      createdBy: null,
+      archived: false,
+    };
+
+    if (date) payload.date = new Date(date);
+
+    const parsed = insertExpenseSchema.safeParse(payload);
+    if (!parsed.success) {
+      errors.push({
+        row: rowNumber,
+        message: parsed.error.issues.map((iss) => iss.message).join("; "),
+      });
+      continue;
+    }
+
+    records.push(parsed.data);
+  }
+
+  return {
+    records,
+    result: {
+      totalRows: Math.max(0, rows.length - 1),
+      imported: records.length,
+      errors,
+    },
+  };
+}
 
 function parseSpecificationsObject(input: Record<string, unknown>) {
   return Object.fromEntries(

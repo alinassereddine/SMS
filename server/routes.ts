@@ -29,6 +29,7 @@ import {
   parseSalesImport,
   parseSuppliersImport,
   parsePaymentsImport,
+  parseExpensesImport,
 } from "./import";
 
 export async function registerRoutes(
@@ -504,6 +505,27 @@ export async function registerRoutes(
         });
       } catch {
         res.status(500).json({ error: "Failed to import payments" });
+      }
+    },
+  );
+
+  app.post(
+    "/api/expenses/import",
+    requirePermission("expenses:write"),
+    upload.single("file"),
+    async (req, res) => {
+      try {
+        if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+
+        const { records, result } = parseExpensesImport(req.file.buffer, req.file.originalname);
+
+        for (const expense of records) {
+          await storage.createExpense(expense);
+        }
+
+        res.status(200).json(result);
+      } catch {
+        res.status(500).json({ error: "Failed to import expenses" });
       }
     },
   );
