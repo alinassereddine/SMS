@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Wallet, MoreHorizontal, Eye, User, Truck, Pencil } from "lucide-react";
+import { Plus, Wallet, MoreHorizontal, Eye, User, Truck, Pencil, Upload, Download } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { ExportButton } from "@/components/export-button";
 import { DataTable, Column } from "@/components/data-table";
@@ -103,6 +103,8 @@ export default function Payments() {
   const [typeFilter, setTypeFilter] = useState<"all" | "customer" | "supplier">("all");
   const [datePreset, setDatePreset] = useState<DatePreset>("month");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const importInputRef = useRef<HTMLInputElement>(null);
   const { from: dateFrom } = getDateRange(datePreset);
   const [editPayment, setEditPayment] = useState<PaymentWithEntity | null>(null);
   const [editDate, setEditDate] = useState<string>("");
@@ -315,10 +317,113 @@ export default function Payments() {
   const customerPayments = payments.filter(p => p.type === "customer").reduce((sum, p) => sum + p.amount, 0);
   const supplierPayments = payments.filter(p => p.type === "supplier").reduce((sum, p) => sum + p.amount, 0);
 
+  const downloadTemplate = () => {
+    const header = [
+      "Type",
+      "Entity",
+      "Amount",
+      "TransactionType",
+      "PaymentMethod",
+      "Date",
+      "Reference",
+      "Notes",
+    ];
+    const example = ["customer", "Ahmed Hassan", "10000", "payment", "cash", "2025-01-10", "", ""];
+    const csv = [header, example]
+      .map((row) =>
+        row
+          .map((cell) => {
+            const value = String(cell ?? "");
+            const escaped = value.replace(/\"/g, '""');
+            return `"${escaped}"`;
+          })
+          .join(","),
+      )
+      .join("\n");
+
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "payments-import-template.csv";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportFile = async (file: File) => {
+    setIsImporting(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await fetch("/api/payments/import", {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
+
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast({
+          title: "Import failed",
+          description: body?.error || "Failed to import payments",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/suppliers"] });
+
+      const imported = body?.imported ?? 0;
+      const totalRows = body?.totalRows ?? 0;
+      const errorsCount = Array.isArray(body?.errors) ? body.errors.length : 0;
+
+      toast({
+        title: "Import completed",
+        description: `Imported ${imported} payments from ${totalRows} rows${errorsCount ? ` (${errorsCount} errors)` : ""}.`,
+      });
+    } catch {
+      toast({
+        title: "Import failed",
+        description: "Failed to import payments",
+        variant: "destructive",
+      });
+    } finally {
+      setIsImporting(false);
+      if (importInputRef.current) importInputRef.current.value = "";
+    }
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader title="Payments" description="Track customer and supplier payments">
         <div className="flex items-center gap-2">
+          <input
+            ref={importInputRef}
+            type="file"
+            accept=".xlsx,.csv"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) void handleImportFile(file);
+            }}
+          />
+          <Button variant="outline" onClick={downloadTemplate}>
+            <Download className="h-4 w-4 mr-2" />
+            Template
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => importInputRef.current?.click()}
+            disabled={isImporting}
+          >
+            <Upload className="h-4 w-4 mr-2" />
+            {isImporting ? "Importing..." : "Import"}
+          </Button>
           <ExportButton
             data={filteredPayments}
             filename="payments"

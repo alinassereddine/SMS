@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, FileText, MoreHorizontal, Eye, Printer, Trash2, Package, AlertTriangle, Pencil, X, Search } from "lucide-react";
+import { Plus, FileText, MoreHorizontal, Eye, Printer, Trash2, Package, AlertTriangle, Pencil, X, Search, Upload, Download } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { ExportButton } from "@/components/export-button";
 import { DataTable, Column } from "@/components/data-table";
@@ -115,6 +115,8 @@ export default function Purchases() {
   const [search, setSearch] = useState("");
   const [datePreset, setDatePreset] = useState<DatePreset>("month");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const importInputRef = useRef<HTMLInputElement>(null);
   const [selectedInvoice, setSelectedInvoice] = useState<PurchaseInvoiceWithSupplier | null>(null);
   const [deleteConfirmInvoice, setDeleteConfirmInvoice] = useState<PurchaseInvoiceWithSupplier | null>(null);
   const [editInvoice, setEditInvoice] = useState<PurchaseInvoiceWithSupplier | null>(null);
@@ -125,6 +127,7 @@ export default function Purchases() {
   const { can } = useAuth();
   const canSeeBalance = can("purchases:balance");
   const canDelete = can("purchases:delete");
+  const canImport = can("purchases:write");
   const { from: dateFrom } = getDateRange(datePreset);
   const [editPaidAmount, setEditPaidAmount] = useState(0);
   const [editNotes, setEditNotes] = useState("");
@@ -134,6 +137,98 @@ export default function Purchases() {
   const [newItemCost, setNewItemCost] = useState(0);
   const [itemEntries, setItemEntries] = useState<ItemEntry[]>([{ productId: "", imei: "", unitPrice: 0 }]);
   const { toast } = useToast();
+
+  const downloadTemplate = () => {
+    const header = [
+      "InvoiceNumber",
+      "Supplier",
+      "Date",
+      "Product",
+      "IMEI",
+      "UnitPrice",
+      "DiscountAmount",
+      "PaidAmount",
+      "Notes",
+    ];
+    const example = [
+      "PI000001",
+      "Apple Distributor",
+      "2025-01-01",
+      "iPhone 15 Pro",
+      "111111111111111",
+      "450000",
+      "0",
+      "0",
+      "",
+    ];
+    const csv = [header, example]
+      .map((row) =>
+        row
+          .map((cell) => {
+            const value = String(cell ?? "");
+            const escaped = value.replace(/\"/g, '""');
+            return `"${escaped}"`;
+          })
+          .join(","),
+      )
+      .join("\n");
+
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "purchase-invoices-import-template.csv";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportFile = async (file: File) => {
+    setIsImporting(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await fetch("/api/purchase-invoices/import", {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
+
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast({
+          title: "Import failed",
+          description: body?.error || "Failed to import purchase invoices",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/items"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/suppliers"] });
+
+      const imported = body?.imported ?? 0;
+      const totalRows = body?.totalRows ?? 0;
+      const errorsCount = Array.isArray(body?.errors) ? body.errors.length : 0;
+
+      toast({
+        title: "Import completed",
+        description: `Imported ${imported} invoices from ${totalRows} rows${errorsCount ? ` (${errorsCount} errors)` : ""}.`,
+      });
+    } catch {
+      toast({
+        title: "Import failed",
+        description: "Failed to import purchase invoices",
+        variant: "destructive",
+      });
+    } finally {
+      setIsImporting(false);
+      if (importInputRef.current) importInputRef.current.value = "";
+    }
+  };
 
   const { data: invoices = [], isLoading } = useQuery<PurchaseInvoiceWithSupplier[]>({
     queryKey: ["/api/purchase-invoices"],
@@ -431,6 +526,32 @@ export default function Purchases() {
     <div className="space-y-6">
       <PageHeader title="Purchase Invoices" description="Manage supplier purchases">
         <div className="flex items-center gap-2">
+          {canImport && (
+            <>
+              <input
+                ref={importInputRef}
+                type="file"
+                accept=".xlsx,.csv"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) void handleImportFile(file);
+                }}
+              />
+              <Button variant="outline" onClick={downloadTemplate}>
+                <Download className="h-4 w-4 mr-2" />
+                Template
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => importInputRef.current?.click()}
+                disabled={isImporting}
+              >
+                <Upload className="h-4 w-4 mr-2" />
+                {isImporting ? "Importing..." : "Import"}
+              </Button>
+            </>
+          )}
           <ExportButton
             data={filteredInvoices}
             filename="purchases"

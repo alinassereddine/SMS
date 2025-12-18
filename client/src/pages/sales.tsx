@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Eye, Receipt, MoreHorizontal, Printer, Trash2, AlertTriangle, Pencil, Plus, X } from "lucide-react";
+import { Eye, Receipt, MoreHorizontal, Printer, Trash2, AlertTriangle, Pencil, Plus, X, Upload, Download } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { PageHeader } from "@/components/page-header";
@@ -90,10 +90,13 @@ export default function Sales() {
   const [search, setSearch] = useState("");
   const [paymentFilter, setPaymentFilter] = useState<string>("all");
   const [datePreset, setDatePreset] = useState<DatePreset>("month");
+  const [isImporting, setIsImporting] = useState(false);
+  const importInputRef = useRef<HTMLInputElement>(null);
   const [selectedSale, setSelectedSale] = useState<SaleWithCustomer | null>(null);
   const [deleteConfirmSale, setDeleteConfirmSale] = useState<SaleWithCustomer | null>(null);
   const { can } = useAuth();
   const canDelete = can("sales:delete");
+  const canImport = can("sales:write");
   const { from: dateFrom } = getDateRange(datePreset);
   const [editSale, setEditSale] = useState<SaleWithCustomer | null>(null);
   const [editItems, setEditItems] = useState<EditItem[]>([]);
@@ -105,6 +108,98 @@ export default function Sales() {
   const [showAddItem, setShowAddItem] = useState(false);
   const [itemSearch, setItemSearch] = useState("");
   const { toast } = useToast();
+
+  const downloadTemplate = () => {
+    const header = [
+      "SaleNumber",
+      "Customer",
+      "Date",
+      "IMEI",
+      "UnitPrice",
+      "DiscountAmount",
+      "PaidAmount",
+      "PaymentMethod",
+      "Notes",
+    ];
+    const example = [
+      "S000001",
+      "Walk-in Customer",
+      "2025-01-05",
+      "111111111111111",
+      "550000",
+      "0",
+      "550000",
+      "cash",
+      "",
+    ];
+    const csv = [header, example]
+      .map((row) =>
+        row
+          .map((cell) => {
+            const value = String(cell ?? "");
+            const escaped = value.replace(/\"/g, '""');
+            return `"${escaped}"`;
+          })
+          .join(","),
+      )
+      .join("\n");
+
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "sales-import-template.csv";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportFile = async (file: File) => {
+    setIsImporting(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await fetch("/api/sales/import", {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
+
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast({
+          title: "Import failed",
+          description: body?.error || "Failed to import sales",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      queryClient.invalidateQueries({ queryKey: ["/api/sales"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/items"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
+
+      const imported = body?.imported ?? 0;
+      const totalRows = body?.totalRows ?? 0;
+      const errorsCount = Array.isArray(body?.errors) ? body.errors.length : 0;
+
+      toast({
+        title: "Import completed",
+        description: `Imported ${imported} sales from ${totalRows} rows${errorsCount ? ` (${errorsCount} errors)` : ""}.`,
+      });
+    } catch {
+      toast({
+        title: "Import failed",
+        description: "Failed to import sales",
+        variant: "destructive",
+      });
+    } finally {
+      setIsImporting(false);
+      if (importInputRef.current) importInputRef.current.value = "";
+    }
+  };
 
   const { data: sales = [], isLoading } = useQuery<SaleWithCustomer[]>({
     queryKey: ["/api/sales"],
@@ -356,12 +451,40 @@ export default function Sales() {
   return (
     <div className="space-y-6">
       <PageHeader title="Sales" description={`${filteredSales.length} sales found`}>
-        <Link href="/pos">
-          <Button data-testid="button-new-sale">
-            <Receipt className="h-4 w-4 mr-2" />
-            New Sale
-          </Button>
-        </Link>
+        <div className="flex items-center gap-2">
+          {canImport && (
+            <>
+              <input
+                ref={importInputRef}
+                type="file"
+                accept=".xlsx,.csv"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) void handleImportFile(file);
+                }}
+              />
+              <Button variant="outline" onClick={downloadTemplate}>
+                <Download className="h-4 w-4 mr-2" />
+                Template
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => importInputRef.current?.click()}
+                disabled={isImporting}
+              >
+                <Upload className="h-4 w-4 mr-2" />
+                {isImporting ? "Importing..." : "Import"}
+              </Button>
+            </>
+          )}
+          <Link href="/pos">
+            <Button data-testid="button-new-sale">
+              <Receipt className="h-4 w-4 mr-2" />
+              New Sale
+            </Button>
+          </Link>
+        </div>
       </PageHeader>
 
       <div className="grid gap-4 md:grid-cols-3">

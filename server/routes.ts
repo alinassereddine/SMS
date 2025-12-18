@@ -22,7 +22,14 @@ import {
 } from "@shared/schema";
 import { z } from "zod";
 import multer from "multer";
-import { parseCustomersImport, parseProductsImport, parseSuppliersImport } from "./import";
+import {
+  parseCustomersImport,
+  parseProductsImport,
+  parsePurchaseInvoicesImport,
+  parseSalesImport,
+  parseSuppliersImport,
+  parsePaymentsImport,
+} from "./import";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -105,6 +112,398 @@ export async function registerRoutes(
         res.status(200).json(result);
       } catch (error) {
         res.status(500).json({ error: "Failed to import products" });
+      }
+    },
+  );
+
+  app.post(
+    "/api/purchase-invoices/import",
+    requirePermission("purchases:write"),
+    upload.single("file"),
+    async (req, res) => {
+      try {
+        if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+
+        const { invoices, result } = parsePurchaseInvoicesImport(
+          req.file.buffer,
+          req.file.originalname,
+        );
+
+        const suppliers = await storage.getSuppliers();
+        const products = await storage.getProducts();
+        const supplierByName = new Map(
+          suppliers.map((s) => [String(s.name).trim().toLowerCase(), s]),
+        );
+        const supplierById = new Map(suppliers.map((s) => [s.id, s]));
+        const productByName = new Map(
+          products.map((p) => [String(p.name).trim().toLowerCase(), p]),
+        );
+        const productById = new Map(products.map((p) => [p.id, p]));
+        const existingInvoiceNumbers = new Set(
+          (await storage.getPurchaseInvoices()).map((i) => i.invoiceNumber),
+        );
+
+        const errors = [...result.errors];
+        let imported = 0;
+
+        for (const inv of invoices) {
+          if (existingInvoiceNumbers.has(inv.invoiceNumber)) {
+            errors.push({
+              row: 0,
+              message: `InvoiceNumber already exists: ${inv.invoiceNumber}`,
+            });
+            continue;
+          }
+
+          const supplier =
+            supplierById.get(inv.supplier) ?? supplierByName.get(inv.supplier.trim().toLowerCase());
+          if (!supplier) {
+            errors.push({
+              row: 0,
+              message: `Unknown supplier: ${inv.supplier} (invoice ${inv.invoiceNumber})`,
+            });
+            continue;
+          }
+
+          const itemsResolved: { productId: string; imei: string; unitPrice: number }[] = [];
+          let itemError = false;
+
+          for (const item of inv.items) {
+            const product =
+              productById.get(item.product) ?? productByName.get(item.product.trim().toLowerCase());
+            if (!product) {
+              errors.push({
+                row: 0,
+                message: `Unknown product: ${item.product} (invoice ${inv.invoiceNumber})`,
+              });
+              itemError = true;
+              continue;
+            }
+            itemsResolved.push({
+              productId: product.id,
+              imei: item.imei,
+              unitPrice: item.unitPrice,
+            });
+          }
+
+          if (itemError || itemsResolved.length === 0) continue;
+
+          const subtotal = itemsResolved.reduce((sum, i) => sum + i.unitPrice, 0);
+          const discountAmount = inv.discountAmount ?? 0;
+          const totalAmount = Math.max(0, subtotal - discountAmount);
+          const paidAmount = inv.paidAmount ?? 0;
+          const balanceImpact = Math.max(0, totalAmount - paidAmount);
+          const paymentType =
+            paidAmount >= totalAmount ? "full" : paidAmount > 0 ? "partial" : "credit";
+
+          const date = inv.date ? new Date(inv.date) : new Date();
+
+          const invoice = await storage.createPurchaseInvoice({
+            invoiceNumber: inv.invoiceNumber,
+            supplierId: supplier.id,
+            date,
+            subtotal,
+            discountAmount,
+            totalAmount,
+            paidAmount,
+            balanceImpact,
+            paymentType,
+            notes: inv.notes || null,
+          });
+
+          for (const itemData of itemsResolved) {
+            const existingItem = await storage.getItemByImei(itemData.imei);
+            if (existingItem) {
+              errors.push({
+                row: 0,
+                message: `IMEI already exists: ${itemData.imei} (invoice ${inv.invoiceNumber})`,
+              });
+              continue;
+            }
+
+            const item = await storage.createItem({
+              productId: itemData.productId,
+              imei: itemData.imei,
+              status: "available",
+              purchasePrice: itemData.unitPrice,
+              purchaseInvoiceId: invoice.id,
+              supplierId: supplier.id,
+              purchasedAt: date,
+            });
+
+            await storage.createPurchaseInvoiceItem({
+              invoiceId: invoice.id,
+              productId: itemData.productId,
+              itemId: item.id,
+              imei: itemData.imei,
+              quantity: 1,
+              unitPrice: itemData.unitPrice,
+              totalPrice: itemData.unitPrice,
+            });
+          }
+
+          if (balanceImpact > 0) {
+            await storage.updateSupplier(supplier.id, {
+              balance: (supplier.balance || 0) + balanceImpact,
+            });
+          }
+
+          imported += 1;
+          existingInvoiceNumbers.add(inv.invoiceNumber);
+        }
+
+        res.status(200).json({
+          totalRows: result.totalRows,
+          imported,
+          errors,
+        });
+      } catch {
+        res.status(500).json({ error: "Failed to import purchase invoices" });
+      }
+    },
+  );
+
+  app.post(
+    "/api/sales/import",
+    requirePermission("sales:write"),
+    upload.single("file"),
+    async (req, res) => {
+      try {
+        if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+
+        const { sales, result } = parseSalesImport(req.file.buffer, req.file.originalname);
+
+        const customers = await storage.getCustomers();
+        const customerByName = new Map(
+          customers.map((c) => [String(c.name).trim().toLowerCase(), c]),
+        );
+        const customerById = new Map(customers.map((c) => [c.id, c]));
+        const existingSaleNumbers = new Set((await storage.getSales()).map((s) => s.saleNumber));
+
+        const errors = [...result.errors];
+        let imported = 0;
+
+        for (const saleGroup of sales) {
+          if (existingSaleNumbers.has(saleGroup.saleNumber)) {
+            errors.push({ row: 0, message: `SaleNumber already exists: ${saleGroup.saleNumber}` });
+            continue;
+          }
+
+          const date = saleGroup.date ? new Date(saleGroup.date) : new Date();
+          const discountAmount = saleGroup.discountAmount ?? 0;
+          const paidAmount = saleGroup.paidAmount ?? 0;
+          const paymentMethod = (saleGroup.paymentMethod || "cash").toLowerCase();
+
+          const itemsResolved: { itemId: string; unitPrice: number }[] = [];
+          let subtotal = 0;
+          let profit = 0;
+
+          for (const line of saleGroup.items) {
+            const item = await storage.getItemByImei(line.imei);
+            if (!item) {
+              errors.push({
+                row: 0,
+                message: `Unknown IMEI: ${line.imei} (sale ${saleGroup.saleNumber})`,
+              });
+              continue;
+            }
+            if (item.status !== "available") {
+              errors.push({
+                row: 0,
+                message: `Item not available (IMEI ${line.imei}, status ${item.status}) (sale ${saleGroup.saleNumber})`,
+              });
+              continue;
+            }
+
+            subtotal += line.unitPrice;
+            profit += Math.max(0, line.unitPrice - item.purchasePrice);
+            itemsResolved.push({ itemId: item.id, unitPrice: line.unitPrice });
+          }
+
+          if (itemsResolved.length === 0) continue;
+          if (discountAmount > subtotal) {
+            errors.push({
+              row: 0,
+              message: `Discount exceeds subtotal (sale ${saleGroup.saleNumber})`,
+            });
+            continue;
+          }
+
+          const totalAmount = Math.max(0, subtotal - discountAmount);
+          if (paidAmount > totalAmount) {
+            errors.push({
+              row: 0,
+              message: `PaidAmount exceeds total (sale ${saleGroup.saleNumber})`,
+            });
+            continue;
+          }
+
+          const balanceImpact = Math.max(0, totalAmount - paidAmount);
+          const paymentType =
+            paidAmount >= totalAmount ? "full" : paidAmount > 0 ? "partial" : "credit";
+
+          let customerId: string | null = null;
+          if (saleGroup.customer) {
+            const customer =
+              customerById.get(saleGroup.customer) ??
+              customerByName.get(saleGroup.customer.trim().toLowerCase());
+            if (!customer) {
+              errors.push({
+                row: 0,
+                message: `Unknown customer: ${saleGroup.customer} (sale ${saleGroup.saleNumber})`,
+              });
+              continue;
+            }
+            customerId = customer.id;
+          }
+
+          if (balanceImpact > 0 && !customerId) {
+            errors.push({
+              row: 0,
+              message: `Customer required for partial/credit sale (sale ${saleGroup.saleNumber})`,
+            });
+            continue;
+          }
+
+          const sale = await storage.createSale({
+            saleNumber: saleGroup.saleNumber,
+            customerId,
+            date,
+            subtotal,
+            discountAmount,
+            totalAmount,
+            paidAmount,
+            balanceImpact,
+            profit,
+            paymentType,
+            paymentMethod,
+            cashRegisterSessionId: null,
+            notes: saleGroup.notes || null,
+            createdBy: null,
+            archived: false,
+          });
+
+          for (const line of itemsResolved) {
+            const item = await storage.getItem(line.itemId);
+            if (!item) continue;
+            await storage.updateItem(item.id, {
+              status: "sold",
+              saleId: sale.id,
+              salePrice: line.unitPrice,
+              customerId,
+              soldAt: date,
+            });
+            await storage.createSaleItem({
+              saleId: sale.id,
+              productId: item.productId,
+              itemId: item.id,
+              imei: item.imei,
+              quantity: 1,
+              purchasePrice: item.purchasePrice,
+              unitPrice: line.unitPrice,
+              totalPrice: line.unitPrice,
+              profit: Math.max(0, line.unitPrice - item.purchasePrice),
+            });
+          }
+
+          if (balanceImpact > 0 && customerId) {
+            const customer = await storage.getCustomer(customerId);
+            if (customer) {
+              await storage.updateCustomer(customerId, {
+                balance: (customer.balance || 0) + balanceImpact,
+              });
+            }
+          }
+
+          imported += 1;
+          existingSaleNumbers.add(saleGroup.saleNumber);
+        }
+
+        res.status(200).json({
+          totalRows: result.totalRows,
+          imported,
+          errors,
+        });
+      } catch {
+        res.status(500).json({ error: "Failed to import sales" });
+      }
+    },
+  );
+
+  app.post(
+    "/api/payments/import",
+    requirePermission("payments:write"),
+    upload.single("file"),
+    async (req, res) => {
+      try {
+        if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+
+        const { records, result } = parsePaymentsImport(req.file.buffer, req.file.originalname);
+
+        const customers = await storage.getCustomers();
+        const suppliers = await storage.getSuppliers();
+        const customerByName = new Map(
+          customers.map((c) => [String(c.name).trim().toLowerCase(), c]),
+        );
+        const customerById = new Map(customers.map((c) => [c.id, c]));
+        const supplierByName = new Map(
+          suppliers.map((s) => [String(s.name).trim().toLowerCase(), s]),
+        );
+        const supplierById = new Map(suppliers.map((s) => [s.id, s]));
+
+        const errors = [...result.errors];
+        let imported = 0;
+
+        for (const payment of records) {
+          const entityKey = String(payment.entityId).trim();
+          const entity =
+            payment.type === "customer"
+              ? customerById.get(entityKey) ?? customerByName.get(entityKey.toLowerCase())
+              : supplierById.get(entityKey) ?? supplierByName.get(entityKey.toLowerCase());
+
+          if (!entity) {
+            errors.push({
+              row: 0,
+              message: `Unknown ${payment.type}: ${payment.entityId}`,
+            });
+            continue;
+          }
+
+          const created = await storage.createPayment({
+            ...payment,
+            entityId: entity.id,
+            cashRegisterSessionId: payment.cashRegisterSessionId || null,
+          });
+
+          const isRefund = created.transactionType === "refund";
+          const balanceChange = isRefund ? created.amount : -created.amount;
+
+          if (created.type === "customer") {
+            const customer = await storage.getCustomer(created.entityId);
+            if (customer) {
+              await storage.updateCustomer(created.entityId, {
+                balance: (customer.balance || 0) + balanceChange,
+              });
+            }
+          } else {
+            const supplier = await storage.getSupplier(created.entityId);
+            if (supplier) {
+              await storage.updateSupplier(created.entityId, {
+                balance: (supplier.balance || 0) + balanceChange,
+              });
+            }
+          }
+
+          imported += 1;
+        }
+
+        res.status(200).json({
+          totalRows: result.totalRows,
+          imported,
+          errors,
+        });
+      } catch {
+        res.status(500).json({ error: "Failed to import payments" });
       }
     },
   );
