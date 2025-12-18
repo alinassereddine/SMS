@@ -57,7 +57,7 @@ const productFormSchema = z.object({
 
 type ProductFormValues = z.infer<typeof productFormSchema>;
 
-const categories = ["Phones", "Tablets", "Accessories", "Smart Watch", "Laptops", "Other"];
+const categories = ["Phones", "Tablets", "Accessories", "Smart Watch", "Other"];
 const storageOptions = ["32GB", "64GB", "128GB", "256GB", "512GB", "1TB", "2TB"];
 const ramOptions = ["1GB", "2GB", "3GB", "4GB", "6GB", "8GB", "10GB", "12GB", "16GB", "24GB", "32GB", "64GB"];
 const conditionOptions = ["New", "Used", "Refurbished", "Like New", "Good", "Fair"];
