@@ -18,7 +18,7 @@ import {
   payments, cashRegisterSessions, expenses, currencies, settings,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, sql } from "drizzle-orm";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -30,6 +30,7 @@ export interface IStorage {
   createProduct(data: InsertProduct): Promise<Product>;
   updateProduct(id: string, data: Partial<InsertProduct>): Promise<Product>;
   deleteProduct(id: string): Promise<void>;
+  getProductAvailableCounts(): Promise<{ productId: string; availableCount: number }[]>;
 
   getItems(): Promise<Item[]>;
   getItem(id: string): Promise<Item | undefined>;
@@ -155,6 +156,17 @@ export class DatabaseStorage implements IStorage {
 
   async deleteProduct(id: string): Promise<void> {
     await db.update(products).set({ archived: true }).where(eq(products.id, id));
+  }
+
+  async getProductAvailableCounts(): Promise<{ productId: string; availableCount: number }[]> {
+    return await db
+      .select({
+        productId: items.productId,
+        availableCount: sql<number>`count(*)::int`,
+      })
+      .from(items)
+      .where(and(eq(items.status, "available"), eq(items.archived, false)))
+      .groupBy(items.productId);
   }
 
   async getItems(): Promise<Item[]> {

@@ -77,6 +77,14 @@ export default function Products() {
     queryKey: ["/api/products"],
   });
 
+  const { data: stockCounts = [] } = useQuery<{ productId: string; availableCount: number }[]>({
+    queryKey: ["/api/products/stock"],
+  });
+
+  const availableCountByProductId = new Map(
+    stockCounts.map((r) => [r.productId, r.availableCount] as const),
+  );
+
   const form = useForm<ProductFormValues>({
     resolver: zodResolver(productFormSchema),
     defaultValues: {
@@ -280,9 +288,14 @@ export default function Products() {
     {
       key: "status",
       header: "Status",
-      render: (product) => (
-        <StatusBadge status={product.archived ? "archived" : "available"} />
-      ),
+      render: (product) => {
+        if (product.archived) return <StatusBadge status="archived" />;
+        const availableCount = availableCountByProductId.get(product.id) ?? 0;
+        if (availableCount <= 0) {
+          return <StatusBadge status="out_of_stock" label="Out of stock" />;
+        }
+        return <StatusBadge status="available" label={`Available (${availableCount})`} />;
+      },
     },
     {
       key: "actions",

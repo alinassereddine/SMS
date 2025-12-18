@@ -51,6 +51,15 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/products/stock", async (_req, res) => {
+    try {
+      const counts = await storage.getProductAvailableCounts();
+      res.json(counts);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch product stock" });
+    }
+  });
+
   app.get("/api/products/:id", async (req, res) => {
     try {
       const product = await storage.getProduct(req.params.id);

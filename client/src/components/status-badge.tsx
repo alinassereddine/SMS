@@ -3,11 +3,13 @@ import { cn, getStatusColor } from "@/lib/utils";
 
 interface StatusBadgeProps {
   status: string;
+  label?: string;
   className?: string;
 }
 
-export function StatusBadge({ status, className }: StatusBadgeProps) {
+export function StatusBadge({ status, label, className }: StatusBadgeProps) {
   const colorClass = getStatusColor(status);
+  const display = (label ?? status).replace(/_/g, " ");
   
   return (
     <Badge 
@@ -19,7 +21,7 @@ export function StatusBadge({ status, className }: StatusBadgeProps) {
       )}
       data-testid={`badge-status-${status.toLowerCase()}`}
     >
-      {status}
+      {display}
     </Badge>
   );
 }

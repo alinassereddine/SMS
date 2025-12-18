@@ -64,6 +64,7 @@ export function parseCurrency(value: string): number {
 export function getStatusColor(status: string): string {
   const colors: Record<string, string> = {
     available: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+    out_of_stock: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
     sold: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
     archived: "bg-gray-500/10 text-gray-600 dark:text-gray-400",
     open: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
