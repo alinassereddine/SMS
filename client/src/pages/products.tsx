@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Package, MoreHorizontal, Pencil, Trash2, Archive } from "lucide-react";
+import { Plus, Package, MoreHorizontal, Pencil, Trash2, Upload, Download } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { DataTable, Column } from "@/components/data-table";
 import { SearchInput } from "@/components/search-input";
@@ -47,6 +47,7 @@ import type { Product } from "@shared/schema";
 
 const productFormSchema = z.object({
   name: z.string().min(1, "Name is required"),
+  supplier: z.string().optional(),
   brand: z.string().optional(),
   category: z.string().optional(),
   storage: z.string().optional(),
@@ -65,9 +66,12 @@ export default function Products() {
   const [search, setSearch] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [isImporting, setIsImporting] = useState(false);
+  const importInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const { can } = useAuth();
   const canDelete = can("products:delete");
+  const canImport = can("products:write");
 
   const { data: products = [], isLoading } = useQuery<Product[]>({
     queryKey: ["/api/products"],
@@ -77,6 +81,7 @@ export default function Products() {
     resolver: zodResolver(productFormSchema),
     defaultValues: {
       name: "",
+      supplier: "",
       brand: "",
       category: "",
       storage: "",
@@ -87,8 +92,9 @@ export default function Products() {
 
   const createMutation = useMutation({
     mutationFn: async (data: ProductFormValues) => {
-      const { storage, ram, condition, ...rest } = data;
+      const { supplier, storage, ram, condition, ...rest } = data;
       const specifications: Record<string, string> = {};
+      if (supplier) specifications.supplier = supplier;
       if (storage && storage !== "none") specifications.storage = storage;
       if (ram && ram !== "none") specifications.ram = ram;
       if (condition && condition !== "none") specifications.condition = condition;
@@ -107,8 +113,9 @@ export default function Products() {
 
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: ProductFormValues }) => {
-      const { storage, ram, condition, ...rest } = data;
+      const { supplier, storage, ram, condition, ...rest } = data;
       const specifications: Record<string, string> = {};
+      if (supplier) specifications.supplier = supplier;
       if (storage && storage !== "none") specifications.storage = storage;
       if (ram && ram !== "none") specifications.ram = ram;
       if (condition && condition !== "none") specifications.condition = condition;
@@ -147,13 +154,14 @@ export default function Products() {
         name: product.name,
         brand: product.brand || "",
         category: product.category || "",
+        supplier: specs.supplier || "",
         storage: specs.storage || "",
         ram: specs.ram || "",
         condition: specs.condition || "",
       });
     } else {
       setEditingProduct(null);
-      form.reset({ name: "", brand: "", category: "", storage: "", ram: "", condition: "" });
+      form.reset({ name: "", supplier: "", brand: "", category: "", storage: "", ram: "", condition: "" });
     }
     setIsDialogOpen(true);
   };
@@ -172,6 +180,75 @@ export default function Products() {
     product.category?.toLowerCase().includes(search.toLowerCase())
   );
 
+  const downloadTemplate = () => {
+    const header = ["Name", "Supplier", "Brand", "Category", "Storage", "RAM", "Condition"];
+    const example = ["iPhone 15 Pro", "Apple Distributor", "Apple", "Phones", "128GB", "8GB", "New"];
+    const csv = [header, example]
+      .map((row) =>
+        row
+          .map((cell) => {
+            const value = String(cell ?? "");
+            const escaped = value.replace(/\"/g, '""');
+            return `"${escaped}"`;
+          })
+          .join(","),
+      )
+      .join("\n");
+
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "products-import-template.csv";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportFile = async (file: File) => {
+    setIsImporting(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await fetch("/api/products/import", {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
+
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast({
+          title: "Import failed",
+          description: body?.error || "Failed to import products",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      queryClient.invalidateQueries({ queryKey: ["/api/products"] });
+      const imported = body?.imported ?? 0;
+      const totalRows = body?.totalRows ?? 0;
+      const errorsCount = Array.isArray(body?.errors) ? body.errors.length : 0;
+
+      toast({
+        title: "Import completed",
+        description: `Imported ${imported} of ${totalRows} rows${errorsCount ? ` (${errorsCount} errors)` : ""}.`,
+      });
+    } catch {
+      toast({
+        title: "Import failed",
+        description: "Failed to import products",
+        variant: "destructive",
+      });
+    } finally {
+      setIsImporting(false);
+      if (importInputRef.current) importInputRef.current.value = "";
+    }
+  };
+
   const columns: Column<Product>[] = [
     {
       key: "name",
@@ -183,9 +260,12 @@ export default function Products() {
           </div>
           <div>
             <p className="font-medium">{product.name}</p>
-            {product.brand && (
-              <p className="text-xs text-muted-foreground">{product.brand}</p>
-            )}
+            {(() => {
+              const specs = (product.specifications || {}) as Record<string, string>;
+              const supplier = specs.supplier;
+              const subtitle = [product.brand, supplier].filter(Boolean).join(" • ");
+              return subtitle ? <p className="text-xs text-muted-foreground">{subtitle}</p> : null;
+            })()}
           </div>
         </div>
       ),
@@ -239,10 +319,38 @@ export default function Products() {
   return (
     <div className="space-y-6">
       <PageHeader title="Products" description="Manage your product catalog">
-        <Button onClick={() => handleOpenDialog()} data-testid="button-add-product">
-          <Plus className="h-4 w-4 mr-2" />
-          Add Product
-        </Button>
+        <div className="flex items-center gap-2">
+          {canImport && (
+            <>
+              <input
+                ref={importInputRef}
+                type="file"
+                accept=".xlsx,.csv"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) void handleImportFile(file);
+                }}
+              />
+              <Button variant="outline" onClick={downloadTemplate}>
+                <Download className="h-4 w-4 mr-2" />
+                Template
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => importInputRef.current?.click()}
+                disabled={isImporting}
+              >
+                <Upload className="h-4 w-4 mr-2" />
+                {isImporting ? "Importing..." : "Import"}
+              </Button>
+            </>
+          )}
+          <Button onClick={() => handleOpenDialog()} data-testid="button-add-product">
+            <Plus className="h-4 w-4 mr-2" />
+            Add Product
+          </Button>
+        </div>
       </PageHeader>
 
       <div className="flex items-center gap-4">

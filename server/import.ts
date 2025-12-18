@@ -1,7 +1,9 @@
 import XLSX from "xlsx";
 import {
+  insertProductSchema,
   insertCustomerSchema,
   insertSupplierSchema,
+  type InsertProduct,
   type InsertCustomer,
   type InsertSupplier,
 } from "@shared/schema";
@@ -13,6 +15,14 @@ export type ImportResult = {
   imported: number;
   errors: ImportError[];
 };
+
+function parseSpecificationsObject(input: Record<string, unknown>) {
+  return Object.fromEntries(
+    Object.entries(input)
+      .map(([k, v]) => [k, asOptionalString(v)])
+      .filter(([, v]) => v !== undefined),
+  );
+}
 
 function normalizeHeader(value: unknown): string {
   return String(value ?? "")
@@ -78,6 +88,70 @@ function getCell(row: unknown[], headerIndex: Map<string, number>, key: string):
 function asOptionalString(value: unknown): string | undefined {
   const s = String(value ?? "").trim();
   return s ? s : undefined;
+}
+
+export function parseProductsImport(buffer: Buffer, filename: string): {
+  records: InsertProduct[];
+  result: ImportResult;
+} {
+  const { rows } = readRowsFromFile(buffer, filename);
+  const headerRow = rows[0] ?? [];
+  const headerIndex = buildHeaderIndex(headerRow);
+
+  const errors: ImportError[] = [];
+  const records: InsertProduct[] = [];
+
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i] as unknown[];
+    const rowNumber = i + 1;
+
+    const name = asOptionalString(getCell(row, headerIndex, "name"));
+    if (!name) {
+      continue;
+    }
+
+    const brand = asOptionalString(getCell(row, headerIndex, "brand"));
+    const category = asOptionalString(getCell(row, headerIndex, "category"));
+    const supplier = asOptionalString(getCell(row, headerIndex, "supplier"));
+    const storage = asOptionalString(getCell(row, headerIndex, "storage"));
+    const ram = asOptionalString(getCell(row, headerIndex, "ram"));
+    const condition = asOptionalString(getCell(row, headerIndex, "condition"));
+
+    const specifications = parseSpecificationsObject({
+      supplier,
+      storage,
+      ram,
+      condition,
+    });
+
+    const payload: Partial<InsertProduct> = {
+      name,
+      brand,
+      category,
+      specifications,
+      archived: false,
+    };
+
+    const parsed = insertProductSchema.safeParse(payload);
+    if (!parsed.success) {
+      errors.push({
+        row: rowNumber,
+        message: parsed.error.issues.map((iss) => iss.message).join("; "),
+      });
+      continue;
+    }
+
+    records.push(parsed.data);
+  }
+
+  return {
+    records,
+    result: {
+      totalRows: Math.max(0, rows.length - 1),
+      imported: records.length,
+      errors,
+    },
+  };
 }
 
 export function parseCustomersImport(buffer: Buffer, filename: string): {

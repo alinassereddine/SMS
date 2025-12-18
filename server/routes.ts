@@ -22,7 +22,7 @@ import {
 } from "@shared/schema";
 import { z } from "zod";
 import multer from "multer";
-import { parseCustomersImport, parseSuppliersImport } from "./import";
+import { parseCustomersImport, parseProductsImport, parseSuppliersImport } from "./import";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -73,6 +73,32 @@ export async function registerRoutes(
       res.status(500).json({ error: "Failed to create product" });
     }
   });
+
+  app.post(
+    "/api/products/import",
+    requirePermission("products:write"),
+    upload.single("file"),
+    async (req, res) => {
+      try {
+        if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+
+        const { records, result } = parseProductsImport(
+          req.file.buffer,
+          req.file.originalname,
+        );
+
+        if (records.length > 0) {
+          for (const record of records) {
+            await storage.createProduct(record);
+          }
+        }
+
+        res.status(200).json(result);
+      } catch (error) {
+        res.status(500).json({ error: "Failed to import products" });
+      }
+    },
+  );
 
   app.patch("/api/products/:id", requirePermission("products:write"), async (req, res) => {
     try {
