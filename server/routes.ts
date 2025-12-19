@@ -2298,7 +2298,14 @@ export async function registerRoutes(
       if (!session) {
         return res.json(null);
       }
-      
+      const sessionStartMs = new Date(String(session.openedAt)).getTime();
+      const sessionEndMs = Date.now();
+
+      const isInActiveSessionWindow = (date: unknown) => {
+        const ms = new Date(String(date)).getTime();
+        return Number.isFinite(ms) && ms >= sessionStartMs && ms <= sessionEndMs;
+      };
+       
       // Calculate expected balance in real-time
       const sales = await storage.getSales();
       const payments = await storage.getPayments();
@@ -2308,7 +2315,19 @@ export async function registerRoutes(
       const sessionSales = sales.filter(s => s.cashRegisterSessionId === session.id);
       const sessionPayments = payments.filter(p => p.cashRegisterSessionId === session.id);
       const sessionExpenses = expenses.filter(e => e.cashRegisterSessionId === session.id);
-      const sessionPurchases = purchases.filter(p => p.cashRegisterSessionId === session.id);
+      // Backfill: older purchases may have no session id but belong to the currently open session by date.
+      const sessionPurchases = purchases.filter(
+        (p) => p.cashRegisterSessionId === session.id || (!p.cashRegisterSessionId && isInActiveSessionWindow(p.date)),
+      );
+
+      const purchasesToAttach = sessionPurchases.filter((p) => !p.cashRegisterSessionId);
+      if (purchasesToAttach.length > 0) {
+        await Promise.all(
+          purchasesToAttach.map((p) =>
+            storage.updatePurchaseInvoice(p.id, { cashRegisterSessionId: session.id }),
+          ),
+        );
+      }
 
       const salesCash = sessionSales
         .filter(s => s.paymentMethod === "cash")
@@ -2338,7 +2357,10 @@ export async function registerRoutes(
       
       // Get only the entity names needed for this session's payments
       const customerIds = new Set(sessionPayments.filter(p => p.type === 'customer').map(p => p.entityId));
-      const supplierIds = new Set(sessionPayments.filter(p => p.type === 'supplier').map(p => p.entityId));
+      const supplierIds = new Set([
+        ...sessionPayments.filter(p => p.type === 'supplier').map(p => p.entityId),
+        ...sessionPurchases.map((p) => p.supplierId),
+      ]);
       
       const customerMap = new Map<string, string>();
       const supplierMap = new Map<string, string>();
@@ -2505,6 +2527,13 @@ export async function registerRoutes(
       if (session.status !== "open") {
         return res.status(400).json({ error: "Session is already closed" });
       }
+      const sessionStartMs = new Date(String(session.openedAt)).getTime();
+      const sessionEndMs = Date.now();
+
+      const isInActiveSessionWindow = (date: unknown) => {
+        const ms = new Date(String(date)).getTime();
+        return Number.isFinite(ms) && ms >= sessionStartMs && ms <= sessionEndMs;
+      };
 
       const { actualBalance, notes } = req.body;
 
@@ -2517,7 +2546,18 @@ export async function registerRoutes(
       const sessionSales = sales.filter(s => s.cashRegisterSessionId === session.id);
       const sessionPayments = payments.filter(p => p.cashRegisterSessionId === session.id);
       const sessionExpenses = expenses.filter(e => e.cashRegisterSessionId === session.id);
-      const sessionPurchases = purchases.filter(p => p.cashRegisterSessionId === session.id);
+      const sessionPurchases = purchases.filter(
+        (p) => p.cashRegisterSessionId === session.id || (!p.cashRegisterSessionId && isInActiveSessionWindow(p.date)),
+      );
+
+      const purchasesToAttach = sessionPurchases.filter((p) => !p.cashRegisterSessionId);
+      if (purchasesToAttach.length > 0) {
+        await Promise.all(
+          purchasesToAttach.map((p) =>
+            storage.updatePurchaseInvoice(p.id, { cashRegisterSessionId: session.id }),
+          ),
+        );
+      }
 
       const salesCash = sessionSales
         .filter(s => s.paymentMethod === "cash")
