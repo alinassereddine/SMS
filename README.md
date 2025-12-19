@@ -85,6 +85,49 @@ This repo already serves the built frontend from the Express server in productio
 
 This repo includes a `Dockerfile` that builds the client + server and runs `dist/index.cjs`.
 
+Recommended: deploy with a unique image tag (git SHA) every time. This avoids “old version” issues that happen when redeploying the same tag or accidentally routing traffic to an older revision.
+
+#### Option A: Deploy from your terminal (recommended)
+
+PowerShell (Windows):
+```powershell
+$env:GCP_PROJECT="sms-management-system-481511"
+$env:GCP_REGION="us-central1"
+$env:CLOUD_RUN_SERVICE="sms"
+.\script\deploy-cloudrun.ps1
+```
+
+Bash (macOS/Linux):
+```bash
+export GCP_PROJECT="sms-management-system-481511"
+export GCP_REGION="us-central1"
+export CLOUD_RUN_SERVICE="sms"
+./script/deploy-cloudrun.sh
+```
+
+Both scripts:
+- build a new image tagged with your current git commit SHA
+- deploy a new Cloud Run revision using that image
+- (optionally) use `-NoTraffic` (PowerShell) or `NO_TRAFFIC=1` (bash) for a canary deploy
+
+#### Option B: Manual commands (same idea)
+
+```bash
+PROJECT_ID="sms-management-system-481511"
+REGION="us-central1"
+SERVICE="sms"
+TAG="$(git rev-parse --short HEAD)"
+IMAGE="$REGION-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/$SERVICE:$TAG"
+
+gcloud config set project "$PROJECT_ID"
+gcloud builds submit --tag "$IMAGE"
+gcloud run deploy "$SERVICE" --image "$IMAGE" --region "$REGION" --platform managed
+```
+
+#### If Cloud Run still shows an old version
+- Ensure the newest revision has **100% traffic** (Cloud Run → Service → Revisions).
+- Ensure the revision’s **image digest** matches the image you just built (Artifact Registry → the tag/digest).
+
 Set Cloud Run environment variables:
 - `DATABASE_URL` = Neon pooled connection string
 - `SESSION_SECRET` = long random string
