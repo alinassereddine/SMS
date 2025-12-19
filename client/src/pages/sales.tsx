@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Eye, Receipt, MoreHorizontal, Printer, Trash2, AlertTriangle, Pencil, Plus, X, Upload, Download } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -36,7 +36,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { CurrencyInput } from "@/components/currency-input";
-import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils";
+import { formatCurrency, formatDate, formatDateTime, sortByName } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import type { Sale, SaleWithCustomer, Item, Product, Customer } from "@shared/schema";
 import { Link } from "wouter";
@@ -219,6 +219,8 @@ export default function Sales() {
     queryKey: ["/api/customers"],
     enabled: !!editSale,
   });
+
+  const sortedCustomers = useMemo(() => sortByName(customers), [customers]);
 
   const { data: products = [] } = useQuery<Product[]>({
     queryKey: ["/api/products"],
@@ -693,7 +695,7 @@ export default function Sales() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="walk-in">Walk-in Customer</SelectItem>
-                    {customers.map((c) => (
+                    {sortedCustomers.map((c) => (
                       <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
                     ))}
                   </SelectContent>

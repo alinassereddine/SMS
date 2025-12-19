@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Plus, FileText, MoreHorizontal, Eye, Printer, Trash2, Package, AlertTriangle, Pencil, X, Search, Upload, Download } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
@@ -48,7 +48,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { formatCurrency, formatDate, generateInvoiceNumber } from "@/lib/utils";
+import { formatCurrency, formatDate, generateInvoiceNumber, sortByName } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import type { PurchaseInvoiceWithSupplier, Supplier, Product } from "@shared/schema";
 
@@ -241,6 +241,9 @@ export default function Purchases() {
   const { data: products = [] } = useQuery<Product[]>({
     queryKey: ["/api/products"],
   });
+
+  const sortedSuppliers = useMemo(() => sortByName(suppliers), [suppliers]);
+  const sortedProducts = useMemo(() => sortByName(products), [products]);
 
   const form = useForm<PurchaseFormValues>({
     resolver: zodResolver(purchaseFormSchema),
@@ -651,7 +654,7 @@ export default function Purchases() {
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {suppliers.map((supplier) => (
+                        {sortedSuppliers.map((supplier) => (
                           <SelectItem key={supplier.id} value={supplier.id}>
                             {supplier.name}
                           </SelectItem>
@@ -683,7 +686,7 @@ export default function Purchases() {
                             <SelectValue placeholder="Product" />
                           </SelectTrigger>
                           <SelectContent>
-                            {products.map((p) => (
+                            {sortedProducts.map((p) => (
                               <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
                             ))}
                           </SelectContent>
@@ -877,7 +880,7 @@ export default function Purchases() {
                     <SelectValue placeholder="Select supplier" />
                   </SelectTrigger>
                   <SelectContent>
-                    {suppliers.map((supplier) => (
+                    {sortedSuppliers.map((supplier) => (
                       <SelectItem key={supplier.id} value={supplier.id}>
                         {supplier.name}
                       </SelectItem>
@@ -929,7 +932,7 @@ export default function Purchases() {
                           <SelectValue placeholder="Product" />
                         </SelectTrigger>
                         <SelectContent>
-                          {products.map((p) => (
+                          {sortedProducts.map((p) => (
                             <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
                           ))}
                         </SelectContent>

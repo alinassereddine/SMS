@@ -87,3 +87,9 @@ export function getPaymentMethodIcon(method: string): string {
   };
   return icons[method.toLowerCase()] || "circle";
 }
+
+export function sortByName<T extends { name?: string | null }>(items: readonly T[]): T[] {
+  return [...items].sort((a, b) =>
+    String(a.name ?? "").localeCompare(String(b.name ?? ""), undefined, { sensitivity: "base" }),
+  );
+}

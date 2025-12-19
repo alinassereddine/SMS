@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { 
   Search, 
@@ -38,7 +38,7 @@ import {
 import { CurrencyInput } from "@/components/currency-input";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { formatCurrency, generateSaleNumber } from "@/lib/utils";
+import { formatCurrency, generateSaleNumber, sortByName } from "@/lib/utils";
 import type { ItemWithProduct, Customer, CashRegisterSession } from "@shared/schema";
 
 interface CartItem {
@@ -63,6 +63,8 @@ export default function POS() {
   const { data: customers = [] } = useQuery<Customer[]>({
     queryKey: ["/api/customers"],
   });
+
+  const sortedCustomers = useMemo(() => sortByName(customers), [customers]);
 
   const { data: activeSession } = useQuery<CashRegisterSession | null>({
     queryKey: ["/api/cash-register/active"],
@@ -248,7 +250,7 @@ export default function POS() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="walk-in">Walk-in Customer</SelectItem>
-              {customers.map((customer) => (
+              {sortedCustomers.map((customer) => (
                 <SelectItem key={customer.id} value={customer.id}>
                   {customer.name}
                 </SelectItem>

@@ -1,6 +1,6 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
-import { storage } from "./storage";
+import { storage, type IStorage } from "./storage";
 import { requireAuth, requirePermission } from "./auth";
 import {
   insertProductSchema,
@@ -31,6 +31,18 @@ import {
   parsePaymentsImport,
   parseExpensesImport,
 } from "./import";
+
+async function computeSupplierBalanceCents(storage: IStorage, supplierId: string) {
+  const purchases = await storage.getPurchaseInvoices();
+  const unpaid = purchases
+    .filter((p) => p.supplierId === supplierId)
+    .reduce((sum, p) => sum + (p.totalAmount - (p.paidAmount || 0)), 0);
+
+  const payments = await storage.getPaymentsByEntity("supplier", supplierId);
+  const paid = payments.reduce((sum, p) => sum + p.amount, 0);
+
+  return unpaid - paid;
+}
 
 export async function registerRoutes(
   httpServer: Server,
@@ -477,7 +489,8 @@ export async function registerRoutes(
           });
 
           const isRefund = created.transactionType === "refund";
-          const balanceChange = isRefund ? created.amount : -created.amount;
+          const balanceChange =
+            created.type === "supplier" ? -created.amount : isRefund ? created.amount : -created.amount;
 
           if (created.type === "customer") {
             const customer = await storage.getCustomer(created.entityId);
@@ -811,6 +824,17 @@ export async function registerRoutes(
             credit: 0,
             referenceId: sale.id,
           });
+        } else if (sale.totalAmount > 0 && (sale.paidAmount || 0) >= sale.totalAmount) {
+          // Include fully-paid sales in the ledger without affecting running balance.
+          ledgerEntries.push({
+            id: `sale-${sale.id}`,
+            date: String(sale.date),
+            type: "sale",
+            description: `Sale ${sale.saleNumber} (Paid)`,
+            debit: sale.totalAmount,
+            credit: sale.totalAmount,
+            referenceId: sale.id,
+          });
         }
       }
 
@@ -862,7 +886,34 @@ export async function registerRoutes(
   app.get("/api/suppliers", async (req, res) => {
     try {
       const suppliers = await storage.getSuppliers();
-      res.json(suppliers);
+      const purchases = await storage.getPurchaseInvoices();
+      const payments = await storage.getPayments();
+
+      const unpaidBySupplierId = new Map<string, number>();
+      for (const purchase of purchases) {
+        const supplierId = purchase.supplierId;
+        if (!supplierId) continue;
+        const unpaidAmount = purchase.totalAmount - (purchase.paidAmount || 0);
+        if (unpaidAmount === 0) continue;
+        unpaidBySupplierId.set(supplierId, (unpaidBySupplierId.get(supplierId) || 0) + unpaidAmount);
+      }
+
+      const paidBySupplierId = new Map<string, number>();
+      for (const payment of payments) {
+        if (payment.type !== "supplier") continue;
+        paidBySupplierId.set(
+          payment.entityId,
+          (paidBySupplierId.get(payment.entityId) || 0) + payment.amount,
+        );
+      }
+
+      res.json(
+        suppliers.map((supplier) => {
+          const unpaid = unpaidBySupplierId.get(supplier.id) || 0;
+          const paid = paidBySupplierId.get(supplier.id) || 0;
+          return { ...supplier, balance: unpaid - paid };
+        }),
+      );
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch suppliers" });
     }
@@ -872,7 +923,12 @@ export async function registerRoutes(
     try {
       const supplier = await storage.getSupplier(req.params.id);
       if (!supplier) return res.status(404).json({ error: "Supplier not found" });
-      res.json(supplier);
+
+      const balance = await computeSupplierBalanceCents(storage, supplier.id);
+      if ((supplier.balance || 0) !== balance) {
+        await storage.updateSupplier(supplier.id, { balance });
+      }
+      res.json({ ...supplier, balance });
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch supplier" });
     }
@@ -1020,6 +1076,17 @@ export async function registerRoutes(
             credit: 0,
             referenceId: purchase.id,
           });
+        } else if (purchase.totalAmount > 0 && (purchase.paidAmount || 0) >= purchase.totalAmount) {
+          // Include fully-paid purchases in the ledger without affecting running balance.
+          ledgerEntries.push({
+            id: `purchase-${purchase.id}`,
+            date: String(purchase.date),
+            type: "purchase",
+            description: `Purchase ${purchase.invoiceNumber} (Paid)`,
+            debit: purchase.totalAmount,
+            credit: purchase.totalAmount,
+            referenceId: purchase.id,
+          });
         }
       }
 
@@ -1050,11 +1117,16 @@ export async function registerRoutes(
         return { ...entry, runningBalance };
       });
 
+      const currentBalance = runningBalance;
+      if ((supplier.balance || 0) !== currentBalance) {
+        await storage.updateSupplier(supplier.id, { balance: currentBalance });
+      }
+
       // Reverse for display (most recent first)
       ledger.reverse();
 
       res.json({
-        supplier,
+        supplier: { ...supplier, balance: currentBalance },
         purchases: purchasesWithItems,
         payments: sortedPayments,
         ledger,
@@ -2108,7 +2180,8 @@ export async function registerRoutes(
       // Payment: reduces balance (entity owes less)
       // Refund: increases balance (entity owes more / we owe less)
       const isRefund = data.transactionType === "refund";
-      const balanceChange = isRefund ? data.amount : -data.amount;
+      const balanceChange =
+        data.type === "supplier" ? -data.amount : isRefund ? data.amount : -data.amount;
       
       const payment = await storage.createPayment({
         ...data,
@@ -2158,8 +2231,9 @@ export async function registerRoutes(
         const amountDiff = data.amount - payment.amount;
         if (amountDiff !== 0) {
           const isRefund = payment.transactionType === "refund";
-          const balanceChange = isRefund ? amountDiff : -amountDiff;
-          
+          const balanceChange =
+            payment.type === "supplier" ? -amountDiff : isRefund ? amountDiff : -amountDiff;
+           
           if (payment.type === "customer") {
             const customer = await storage.getCustomer(payment.entityId);
             if (customer) {
@@ -2656,8 +2730,8 @@ export async function registerRoutes(
       const sales = await storage.getSales();
       const items = await storage.getItems();
       const customers = await storage.getCustomers();
-      const suppliers = await storage.getSuppliers();
       const purchases = await storage.getPurchaseInvoices();
+      const payments = await storage.getPayments();
 
       // Calculate totals
       const totalSales = sales.reduce((sum, s) => sum + s.totalAmount, 0);
@@ -2670,7 +2744,31 @@ export async function registerRoutes(
       
       // Outstanding balances
       const outstandingCustomerBalance = customers.reduce((sum, c) => sum + Math.max(0, c.balance || 0), 0);
-      const outstandingSupplierBalance = suppliers.reduce((sum, s) => sum + Math.max(0, s.balance || 0), 0);
+      const unpaidBySupplierId = new Map<string, number>();
+      for (const purchase of purchases) {
+        const supplierId = purchase.supplierId;
+        if (!supplierId) continue;
+        const unpaidAmount = purchase.totalAmount - (purchase.paidAmount || 0);
+        if (unpaidAmount === 0) continue;
+        unpaidBySupplierId.set(supplierId, (unpaidBySupplierId.get(supplierId) || 0) + unpaidAmount);
+      }
+
+      const paidBySupplierId = new Map<string, number>();
+      for (const payment of payments) {
+        if (payment.type !== "supplier") continue;
+        paidBySupplierId.set(
+          payment.entityId,
+          (paidBySupplierId.get(payment.entityId) || 0) + payment.amount,
+        );
+      }
+
+      const outstandingSupplierBalance = Array.from(unpaidBySupplierId.entries()).reduce(
+        (sum, [supplierId, unpaid]) => {
+          const paid = paidBySupplierId.get(supplierId) || 0;
+          return sum + Math.max(0, unpaid - paid);
+        },
+        0,
+      );
 
       res.json({
         totalSales,

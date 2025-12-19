@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Plus, Wallet, MoreHorizontal, Eye, User, Truck, Pencil, Upload, Download } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
@@ -46,7 +46,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils";
+import { formatCurrency, formatDate, formatDateTime, sortByName } from "@/lib/utils";
 import type { Payment, Customer, Supplier, PaymentWithEntity } from "@shared/schema";
 
 type DatePreset = "today" | "week" | "month" | "year" | "all";
@@ -125,6 +125,9 @@ export default function Payments() {
   const { data: suppliers = [] } = useQuery<Supplier[]>({
     queryKey: ["/api/suppliers"],
   });
+
+  const sortedCustomers = useMemo(() => sortByName(customers), [customers]);
+  const sortedSuppliers = useMemo(() => sortByName(suppliers), [suppliers]);
 
   const form = useForm<PaymentFormValues>({
     resolver: zodResolver(paymentFormSchema),
@@ -568,7 +571,7 @@ export default function Payments() {
                       </FormControl>
                       <SelectContent>
                         {paymentType === "customer" 
-                          ? customers.map((c) => (
+                          ? sortedCustomers.map((c) => (
                               <SelectItem key={c.id} value={c.id}>
                                 {c.name}
                                 {(c.balance || 0) > 0 && (
@@ -578,7 +581,7 @@ export default function Payments() {
                                 )}
                               </SelectItem>
                             ))
-                          : suppliers.map((s) => (
+                          : sortedSuppliers.map((s) => (
                               <SelectItem key={s.id} value={s.id}>
                                 {s.name}
                                 {(s.balance || 0) > 0 && (

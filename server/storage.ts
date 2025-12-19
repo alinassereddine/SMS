@@ -136,7 +136,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getProducts(): Promise<Product[]> {
-    return await db.select().from(products).where(eq(products.archived, false));
+    return await db
+      .select()
+      .from(products)
+      .where(eq(products.archived, false))
+      .orderBy(sql`lower(${products.name})`);
   }
 
   async getProduct(id: string): Promise<Product | undefined> {
@@ -206,7 +210,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getCustomers(): Promise<Customer[]> {
-    return await db.select().from(customers).where(eq(customers.archived, false));
+    return await db
+      .select()
+      .from(customers)
+      .where(eq(customers.archived, false))
+      .orderBy(sql`lower(${customers.name})`);
   }
 
   async getCustomer(id: string): Promise<Customer | undefined> {
@@ -229,7 +237,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getArchivedCustomers(): Promise<Customer[]> {
-    return await db.select().from(customers).where(eq(customers.archived, true));
+    return await db
+      .select()
+      .from(customers)
+      .where(eq(customers.archived, true))
+      .orderBy(sql`lower(${customers.name})`);
   }
 
   async archiveCustomer(id: string): Promise<void> {
@@ -252,7 +264,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getSuppliers(): Promise<Supplier[]> {
-    return await db.select().from(suppliers).where(eq(suppliers.archived, false));
+    return await db
+      .select()
+      .from(suppliers)
+      .where(eq(suppliers.archived, false))
+      .orderBy(sql`lower(${suppliers.name})`);
   }
 
   async getSupplier(id: string): Promise<Supplier | undefined> {
@@ -275,7 +291,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getArchivedSuppliers(): Promise<Supplier[]> {
-    return await db.select().from(suppliers).where(eq(suppliers.archived, true));
+    return await db
+      .select()
+      .from(suppliers)
+      .where(eq(suppliers.archived, true))
+      .orderBy(sql`lower(${suppliers.name})`);
   }
 
   async archiveSupplier(id: string): Promise<void> {

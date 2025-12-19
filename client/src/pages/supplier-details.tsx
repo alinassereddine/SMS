@@ -129,6 +129,7 @@ export default function SupplierDetails() {
 
   const totalPurchaseAmount = purchases.reduce((sum, p) => sum + p.totalAmount, 0);
   const totalPaidAmount = payments.reduce((sum, p) => sum + p.amount, 0);
+  const balance = supplier.balance || 0;
 
   return (
     <div className="space-y-6">
@@ -158,10 +159,10 @@ export default function SupplierDetails() {
             ]}
           />
           <Badge 
-            variant={(supplier.balance || 0) > 0 ? "destructive" : "secondary"}
+            variant={balance > 0 ? "destructive" : "secondary"}
             className="text-base px-3 py-1"
           >
-            Balance: {formatCurrency(supplier.balance || 0)}
+            Balance: {formatCurrency(Math.abs(balance))}
           </Badge>
         </div>
       </div>
@@ -233,11 +234,19 @@ export default function SupplierDetails() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className={`text-2xl font-bold ${(supplier.balance || 0) > 0 ? "text-destructive" : "text-emerald-600"}`}>
-              {formatCurrency(supplier.balance || 0)}
+            <p
+              className={`text-2xl font-bold ${
+                balance > 0
+                  ? "text-destructive"
+                  : balance < 0
+                    ? "text-emerald-600"
+                    : ""
+              }`}
+            >
+              {formatCurrency(Math.abs(balance))}
             </p>
             <p className="text-sm text-muted-foreground">
-              {(supplier.balance || 0) > 0 ? "We Owe" : "Settled"}
+              {balance > 0 ? "We Owe" : balance < 0 ? "Prepaid" : "Settled"}
             </p>
           </CardContent>
         </Card>
