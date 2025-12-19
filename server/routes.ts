@@ -137,6 +137,14 @@ export async function registerRoutes(
       try {
         if (!req.file) return res.status(400).json({ error: "No file uploaded" });
 
+        // Purchases should belong to an open cash register session (same rule as manual creation).
+        const activeSession = await storage.getActiveCashRegisterSession();
+        if (!activeSession) {
+          return res.status(400).json({
+            error: "No open cash register session. Please open a session first.",
+          });
+        }
+
         const { invoices, result } = parsePurchaseInvoicesImport(
           req.file.buffer,
           req.file.originalname,
@@ -215,6 +223,7 @@ export async function registerRoutes(
             invoiceNumber: inv.invoiceNumber,
             supplierId: supplier.id,
             date,
+            cashRegisterSessionId: activeSession.id,
             subtotal,
             discountAmount,
             totalAmount,
@@ -1748,6 +1757,7 @@ export async function registerRoutes(
         balanceImpact,
         paymentType: data.paymentType,
         notes: data.notes || null,
+        cashRegisterSessionId: activeSession.id,
       });
 
       // Create items in inventory and invoice items
@@ -2293,10 +2303,12 @@ export async function registerRoutes(
       const sales = await storage.getSales();
       const payments = await storage.getPayments();
       const expenses = await storage.getExpenses();
+      const purchases = await storage.getPurchaseInvoices();
 
       const sessionSales = sales.filter(s => s.cashRegisterSessionId === session.id);
       const sessionPayments = payments.filter(p => p.cashRegisterSessionId === session.id);
       const sessionExpenses = expenses.filter(e => e.cashRegisterSessionId === session.id);
+      const sessionPurchases = purchases.filter(p => p.cashRegisterSessionId === session.id);
 
       const salesCash = sessionSales
         .filter(s => s.paymentMethod === "cash")
@@ -2318,7 +2330,11 @@ export async function registerRoutes(
         .filter(e => e.paymentMethod === "cash")
         .reduce((sum, e) => sum + e.amount, 0);
 
-      const expectedBalance = session.openingBalance + salesCash + paymentsCash - expensesCash;
+      // Purchases are treated as cash outflow for the paid portion.
+      const purchasesCash = sessionPurchases.reduce((sum, p) => sum + (p.paidAmount || 0), 0);
+
+      const expectedBalance =
+        session.openingBalance + salesCash + paymentsCash - expensesCash - purchasesCash;
       
       // Get only the entity names needed for this session's payments
       const customerIds = new Set(sessionPayments.filter(p => p.type === 'customer').map(p => p.entityId));
@@ -2348,12 +2364,14 @@ export async function registerRoutes(
       // Format transactions for display
       const transactions: Array<{
         id: string;
-        type: 'sale' | 'payment' | 'expense';
+        type: 'sale' | 'payment' | 'supplier_payment' | 'purchase' | 'expense';
         description: string;
         amount: number;
         cashAmount: number;
         paymentMethod: string;
         date: string;
+        customerName?: string;
+        supplierName?: string;
       }> = [];
 
       for (const sale of sessionSales) {
@@ -2390,12 +2408,29 @@ export async function registerRoutes(
         
         transactions.push({
           id: payment.id,
-          type: 'payment',
+          type: payment.type === "customer" ? 'payment' : 'supplier_payment',
           description: `${typeLabel} ${direction} ${entityName}`,
           amount: payment.amount,
           cashAmount,
           paymentMethod: payment.paymentMethod,
           date: String(payment.date),
+          customerName: payment.type === "customer" ? entityName : undefined,
+          supplierName: payment.type === "supplier" ? entityName : undefined,
+        });
+      }
+
+      for (const purchase of sessionPurchases) {
+        const supplierName = supplierMap.get(purchase.supplierId) || "Unknown";
+        const paid = purchase.paidAmount || 0;
+        transactions.push({
+          id: purchase.id,
+          type: "purchase",
+          description: `Purchase ${purchase.invoiceNumber}`,
+          amount: paid,
+          cashAmount: -paid,
+          paymentMethod: "cash",
+          date: String(purchase.date),
+          supplierName,
         });
       }
 
@@ -2417,14 +2452,17 @@ export async function registerRoutes(
       res.json({
         ...session,
         expectedBalance,
-        transactionCount: sessionSales.length + sessionPayments.length + sessionExpenses.length,
+        transactionCount:
+          sessionSales.length + sessionPayments.length + sessionPurchases.length + sessionExpenses.length,
         transactions,
         summary: {
           salesCount: sessionSales.length,
           paymentsCount: sessionPayments.length,
+          purchasesCount: sessionPurchases.length,
           expensesCount: sessionExpenses.length,
           salesCash,
           paymentsCash,
+          purchasesCash,
           expensesCash,
         },
       });
@@ -2474,10 +2512,12 @@ export async function registerRoutes(
       const sales = await storage.getSales();
       const payments = await storage.getPayments();
       const expenses = await storage.getExpenses();
+      const purchases = await storage.getPurchaseInvoices();
 
       const sessionSales = sales.filter(s => s.cashRegisterSessionId === session.id);
       const sessionPayments = payments.filter(p => p.cashRegisterSessionId === session.id);
       const sessionExpenses = expenses.filter(e => e.cashRegisterSessionId === session.id);
+      const sessionPurchases = purchases.filter(p => p.cashRegisterSessionId === session.id);
 
       const salesCash = sessionSales
         .filter(s => s.paymentMethod === "cash")
@@ -2504,7 +2544,9 @@ export async function registerRoutes(
         .filter(e => e.paymentMethod === "cash")
         .reduce((sum, e) => sum + e.amount, 0);
 
-      const expectedBalance = session.openingBalance + salesCash + paymentsCash - expensesCash;
+      const purchasesCash = sessionPurchases.reduce((sum, p) => sum + (p.paidAmount || 0), 0);
+      const expectedBalance =
+        session.openingBalance + salesCash + paymentsCash - expensesCash - purchasesCash;
       const difference = (actualBalance || expectedBalance) - expectedBalance;
 
       const updatedSession = await storage.updateCashRegisterSession(session.id, {

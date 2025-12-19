@@ -114,7 +114,7 @@ function getDateRange(preset: DatePreset): { from: Date | null; to: Date } {
 
 interface SessionTransaction {
   id: string;
-  type: 'sale' | 'payment' | 'supplier_payment' | 'expense' | 'opening';
+  type: 'sale' | 'payment' | 'supplier_payment' | 'purchase' | 'expense' | 'opening';
   description: string;
   amount: number;
   cashAmount: number;
@@ -132,14 +132,16 @@ interface ActiveSessionWithDetails extends CashRegisterSession {
   summary?: {
     salesCount: number;
     paymentsCount: number;
+    purchasesCount: number;
     expensesCount: number;
     salesCash: number;
     paymentsCash: number;
+    purchasesCash: number;
     expensesCash: number;
   };
 }
 
-type CategoryFilter = "all" | "sale" | "payment" | "supplier_payment" | "expense" | "opening";
+type CategoryFilter = "all" | "sale" | "payment" | "supplier_payment" | "purchase" | "expense" | "opening";
 
 export default function CashRegister() {
   const [isOpenDialogOpen, setIsOpenDialogOpen] = useState(false);
@@ -346,6 +348,7 @@ export default function CashRegister() {
       case 'sale': return 'Sale';
       case 'payment': return 'Customer Payment';
       case 'supplier_payment': return 'Supplier Payment';
+      case 'purchase': return 'Purchase';
       case 'expense': return 'Expense';
       default: return type;
     }
@@ -509,6 +512,7 @@ export default function CashRegister() {
                     <SelectItem value="sale">Sales</SelectItem>
                     <SelectItem value="payment">Customer Payments</SelectItem>
                     <SelectItem value="supplier_payment">Supplier Payments</SelectItem>
+                    <SelectItem value="purchase">Purchases</SelectItem>
                     <SelectItem value="expense">Expenses</SelectItem>
                   </SelectContent>
                 </Select>

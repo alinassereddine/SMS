@@ -76,6 +76,7 @@ export const purchaseInvoices = pgTable("purchase_invoices", {
   invoiceNumber: text("invoice_number").notNull().unique(),
   supplierId: varchar("supplier_id").notNull(),
   date: timestamp("date").notNull().defaultNow(),
+  cashRegisterSessionId: varchar("cash_register_session_id"),
   
   subtotal: integer("subtotal").notNull(), // In cents
   discountAmount: integer("discount_amount").default(0),
