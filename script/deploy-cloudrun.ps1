@@ -1,12 +1,15 @@
-$ErrorActionPreference = "Stop"
-
 param(
   [string]$ProjectId = $env:GCP_PROJECT,
-  [string]$Region = $(if ($env:GCP_REGION) { $env:GCP_REGION } else { "us-central1" }),
-  [string]$ServiceName = $(if ($env:CLOUD_RUN_SERVICE) { $env:CLOUD_RUN_SERVICE } else { "sms" }),
+  [string]$Region = $env:GCP_REGION,
+  [string]$ServiceName = $env:CLOUD_RUN_SERVICE,
   [string]$ImageRepo = $env:IMAGE_REPO,
   [switch]$NoTraffic
 )
+
+$ErrorActionPreference = "Stop"
+
+if ([string]::IsNullOrWhiteSpace($Region)) { $Region = "us-central1" }
+if ([string]::IsNullOrWhiteSpace($ServiceName)) { $ServiceName = "sms" }
 
 function Require([string]$name, [string]$value) {
   if ([string]::IsNullOrWhiteSpace($value)) {
