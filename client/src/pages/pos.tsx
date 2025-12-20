@@ -147,11 +147,27 @@ export default function POS() {
     },
   });
 
+  const resetSaleDraft = () => {
+    setCart([]);
+    setCustomerId("");
+    setPaymentMethod("cash");
+    setPaidAmount(0);
+    setDiscount(0);
+  };
+
+  const handleCheckoutDialogChange = (open: boolean) => {
+    setIsCheckoutOpen(open);
+    if (!open) {
+      resetSaleDraft();
+    }
+  };
+
   const handleCheckout = () => {
     if (cart.length === 0) {
       toast({ title: "Cart is empty", variant: "destructive" });
       return;
     }
+    setPaymentMethod("cash");
     setPaidAmount(total);
     setIsCheckoutOpen(true);
   };
@@ -351,7 +367,7 @@ export default function POS() {
         </CardFooter>
       </Card>
 
-      <Dialog open={isCheckoutOpen} onOpenChange={setIsCheckoutOpen}>
+      <Dialog open={isCheckoutOpen} onOpenChange={handleCheckoutDialogChange}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Complete Sale</DialogTitle>
@@ -416,7 +432,7 @@ export default function POS() {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsCheckoutOpen(false)}>
+            <Button variant="outline" onClick={() => handleCheckoutDialogChange(false)}>
               Cancel
             </Button>
             <Button 

@@ -36,6 +36,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { CurrencyInput } from "@/components/currency-input";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { formatCurrency, formatDate, formatDateTime, sortByName } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import type { Sale, SaleWithCustomer, Item, Product, Customer } from "@shared/schema";
@@ -644,34 +654,38 @@ export default function Sales() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!deleteConfirmSale} onOpenChange={() => setDeleteConfirmSale(null)}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
+      <AlertDialog
+        open={!!deleteConfirmSale}
+        onOpenChange={(open) => !open && setDeleteConfirmSale(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
               <AlertTriangle className="h-5 w-5 text-destructive" />
               Delete Sale
-            </DialogTitle>
-            <DialogDescription>
+            </AlertDialogTitle>
+            <AlertDialogDescription>
               This action cannot be undone. This will permanently delete sale{" "}
               <span className="font-mono font-medium">{deleteConfirmSale?.saleNumber}</span>{" "}
               and return all items back to available inventory.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteConfirmSale(null)}>
-              Cancel
-            </Button>
-            <Button 
-              variant="destructive" 
-              onClick={() => deleteConfirmSale && deleteMutation.mutate(deleteConfirmSale.id)}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault();
+                if (deleteConfirmSale) deleteMutation.mutate(deleteConfirmSale.id);
+              }}
               disabled={deleteMutation.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               data-testid="button-confirm-delete"
             >
               {deleteMutation.isPending ? "Deleting..." : "Delete"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Dialog open={!!editSale} onOpenChange={() => setEditSale(null)}>
         <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">

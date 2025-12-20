@@ -235,7 +235,7 @@ export async function registerRoutes(
 
           for (const itemData of itemsResolved) {
             const existingItem = await storage.getItemByImei(itemData.imei);
-            if (existingItem) {
+            if (existingItem && (!existingItem.archived || existingItem.status === "sold")) {
               errors.push({
                 row: 0,
                 message: `IMEI already exists: ${itemData.imei} (invoice ${inv.invoiceNumber})`,
@@ -243,15 +243,30 @@ export async function registerRoutes(
               continue;
             }
 
-            const item = await storage.createItem({
-              productId: itemData.productId,
-              imei: itemData.imei,
-              status: "available",
-              purchasePrice: itemData.unitPrice,
-              purchaseInvoiceId: invoice.id,
-              supplierId: supplier.id,
-              purchasedAt: date,
-            });
+            const item = existingItem
+              ? await storage.updateItem(existingItem.id, {
+                  productId: itemData.productId,
+                  imei: itemData.imei,
+                  status: "available",
+                  purchasePrice: itemData.unitPrice,
+                  purchaseInvoiceId: invoice.id,
+                  supplierId: supplier.id,
+                  purchasedAt: date,
+                  archived: false,
+                  salePrice: null,
+                  saleId: null,
+                  customerId: null,
+                  soldAt: null,
+                })
+              : await storage.createItem({
+                  productId: itemData.productId,
+                  imei: itemData.imei,
+                  status: "available",
+                  purchasePrice: itemData.unitPrice,
+                  purchaseInvoiceId: invoice.id,
+                  supplierId: supplier.id,
+                  purchasedAt: date,
+                });
 
             await storage.createPurchaseInvoiceItem({
               invoiceId: invoice.id,
@@ -635,10 +650,23 @@ export async function registerRoutes(
       
       // Check for duplicate IMEI
       const existing = await storage.getItemByImei(data.imei);
-      if (existing) {
+      if (existing && (!existing.archived || existing.status === "sold")) {
         return res.status(400).json({ error: "IMEI already exists" });
       }
-      
+
+      if (existing) {
+        const restored = await storage.updateItem(existing.id, {
+          ...data,
+          archived: false,
+          status: data.status ?? "available",
+          salePrice: null,
+          saleId: null,
+          customerId: null,
+          soldAt: null,
+        });
+        return res.status(200).json(restored);
+      }
+
       const item = await storage.createItem(data);
       res.status(201).json(item);
     } catch (error) {
@@ -1812,20 +1840,35 @@ export async function registerRoutes(
       for (const itemData of data.items) {
         // Check for duplicate IMEI
         const existingItem = await storage.getItemByImei(itemData.imei);
-        if (existingItem) {
+        if (existingItem && (!existingItem.archived || existingItem.status === "sold")) {
           throw new Error(`IMEI already exists: ${itemData.imei}`);
         }
 
         // Create the inventory item
-        const item = await storage.createItem({
-          productId: itemData.productId,
-          imei: itemData.imei,
-          status: "available",
-          purchasePrice: itemData.unitPrice,
-          purchaseInvoiceId: invoice.id,
-          supplierId: data.supplierId,
-          purchasedAt: new Date(),
-        });
+        const item = existingItem
+          ? await storage.updateItem(existingItem.id, {
+              productId: itemData.productId,
+              imei: itemData.imei,
+              status: "available",
+              purchasePrice: itemData.unitPrice,
+              purchaseInvoiceId: invoice.id,
+              supplierId: data.supplierId,
+              purchasedAt: new Date(),
+              archived: false,
+              salePrice: null,
+              saleId: null,
+              customerId: null,
+              soldAt: null,
+            })
+          : await storage.createItem({
+              productId: itemData.productId,
+              imei: itemData.imei,
+              status: "available",
+              purchasePrice: itemData.unitPrice,
+              purchaseInvoiceId: invoice.id,
+              supplierId: data.supplierId,
+              purchasedAt: new Date(),
+            });
 
         // Create the invoice item
         await storage.createPurchaseInvoiceItem({
@@ -2101,7 +2144,7 @@ export async function registerRoutes(
       const newItems = data.items.filter(i => !i.itemId);
       for (const newItem of newItems) {
         const existingItem = await storage.getItemByImei(newItem.imei);
-        if (existingItem) {
+        if (existingItem && (!existingItem.archived || existingItem.status === "sold")) {
           return res.status(400).json({
             error: `IMEI ${newItem.imei} already exists in inventory`
           });
@@ -2166,15 +2209,31 @@ export async function registerRoutes(
       const createdItems: { tempId: number; itemId: string }[] = [];
       for (let i = 0; i < newItems.length; i++) {
         const itemData = newItems[i];
-        const newItem = await storage.createItem({
-          productId: itemData.productId,
-          imei: itemData.imei,
-          purchasePrice: itemData.unitPrice,
-          status: "available",
-          purchaseInvoiceId: invoice.id,
-          supplierId: data.supplierId,
-          purchasedAt: newPurchaseDate,
-        });
+        const existingItem = await storage.getItemByImei(itemData.imei);
+        const newItem = existingItem
+          ? await storage.updateItem(existingItem.id, {
+              productId: itemData.productId,
+              imei: itemData.imei,
+              purchasePrice: itemData.unitPrice,
+              status: "available",
+              purchaseInvoiceId: invoice.id,
+              supplierId: data.supplierId,
+              purchasedAt: newPurchaseDate,
+              archived: false,
+              salePrice: null,
+              saleId: null,
+              customerId: null,
+              soldAt: null,
+            })
+          : await storage.createItem({
+              productId: itemData.productId,
+              imei: itemData.imei,
+              purchasePrice: itemData.unitPrice,
+              status: "available",
+              purchaseInvoiceId: invoice.id,
+              supplierId: data.supplierId,
+              purchasedAt: newPurchaseDate,
+            });
         createdItems.push({ tempId: i, itemId: newItem.id });
       }
       

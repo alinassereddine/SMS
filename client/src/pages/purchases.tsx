@@ -43,6 +43,16 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { CurrencyInput } from "@/components/currency-input";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -253,6 +263,18 @@ export default function Purchases() {
       notes: "",
     },
   });
+
+  const resetNewPurchaseForm = () => {
+    form.reset();
+    setItemEntries([{ productId: "", imei: "", unitPrice: 0 }]);
+  };
+
+  const handleNewPurchaseDialogChange = (open: boolean) => {
+    setIsDialogOpen(open);
+    if (!open) {
+      resetNewPurchaseForm();
+    }
+  };
 
   const createMutation = useMutation({
     mutationFn: async (data: PurchaseFormValues) => {
@@ -631,7 +653,7 @@ export default function Purchases() {
         getRowKey={(i) => i.id}
       />
 
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+      <Dialog open={isDialogOpen} onOpenChange={handleNewPurchaseDialogChange}>
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>New Purchase Invoice</DialogTitle>
@@ -669,10 +691,6 @@ export default function Purchases() {
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-medium">Items</span>
-                  <Button type="button" variant="outline" size="sm" onClick={addItemEntry}>
-                    <Plus className="h-3 w-3 mr-1" />
-                    Add Item
-                  </Button>
                 </div>
                 <div className="space-y-3">
                   {itemEntries.map((item, index) => (
@@ -715,6 +733,12 @@ export default function Purchases() {
                     </div>
                   ))}
                 </div>
+                <div className="mt-3">
+                  <Button type="button" variant="outline" size="sm" onClick={addItemEntry}>
+                    <Plus className="h-3 w-3 mr-1" />
+                    Add Item
+                  </Button>
+                </div>
               </div>
 
               <Separator />
@@ -753,7 +777,7 @@ export default function Purchases() {
               />
 
               <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
+                <Button type="button" variant="outline" onClick={() => handleNewPurchaseDialogChange(false)}>
                   Cancel
                 </Button>
                 <Button type="submit" disabled={createMutation.isPending} data-testid="button-save-purchase">
@@ -834,34 +858,38 @@ export default function Purchases() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!deleteConfirmInvoice} onOpenChange={() => setDeleteConfirmInvoice(null)}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
+      <AlertDialog
+        open={!!deleteConfirmInvoice}
+        onOpenChange={(open) => !open && setDeleteConfirmInvoice(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
               <AlertTriangle className="h-5 w-5 text-destructive" />
               Delete Purchase Invoice
-            </DialogTitle>
-            <DialogDescription>
+            </AlertDialogTitle>
+            <AlertDialogDescription>
               This action cannot be undone. This will permanently delete invoice{" "}
               <span className="font-mono font-medium">{deleteConfirmInvoice?.invoiceNumber}</span>{" "}
               and remove all associated inventory items.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteConfirmInvoice(null)}>
-              Cancel
-            </Button>
-            <Button 
-              variant="destructive" 
-              onClick={() => deleteConfirmInvoice && deleteMutation.mutate(deleteConfirmInvoice.id)}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault();
+                if (deleteConfirmInvoice) deleteMutation.mutate(deleteConfirmInvoice.id);
+              }}
               disabled={deleteMutation.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               data-testid="button-confirm-delete"
             >
               {deleteMutation.isPending ? "Deleting..." : "Delete"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Dialog open={!!editInvoice} onOpenChange={() => setEditInvoice(null)}>
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">

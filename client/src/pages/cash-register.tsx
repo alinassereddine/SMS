@@ -371,9 +371,15 @@ export default function CashRegister() {
     ? [openingTransaction, ...allTransactions]
     : [];
 
+  const sortedTransactions = [...transactionsWithOpening].sort((a, b) => {
+    if (a.type === 'opening' && b.type !== 'opening') return -1;
+    if (b.type === 'opening' && a.type !== 'opening') return 1;
+    return new Date(a.date).getTime() - new Date(b.date).getTime();
+  });
+
   const { from: dateFrom } = getDateRange(datePreset);
   
-  const filteredTransactions = transactionsWithOpening.filter(tx => {
+  const filteredTransactions = sortedTransactions.filter(tx => {
     // Category filter
     if (categoryFilter !== "all" && tx.type !== categoryFilter) {
       return false;
@@ -539,7 +545,6 @@ export default function CashRegister() {
                     <TableHead className="w-32">Category</TableHead>
                     <TableHead>Customer / Supplier</TableHead>
                     <TableHead>Products</TableHead>
-                    <TableHead className="w-16 text-center">Items</TableHead>
                     <TableHead>Note</TableHead>
                     <TableHead className="w-28 text-right">Amount</TableHead>
                     <TableHead className="w-28 text-right">Balance</TableHead>
@@ -549,7 +554,7 @@ export default function CashRegister() {
                 <TableBody>
                   {transactionsWithBalance.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
+                      <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                         No transactions recorded yet
                       </TableCell>
                     </TableRow>
@@ -566,9 +571,6 @@ export default function CashRegister() {
                         </TableCell>
                         <TableCell className="text-sm max-w-[200px] truncate">
                           {tx.products || "—"}
-                        </TableCell>
-                        <TableCell className="text-center text-sm text-muted-foreground">
-                          {tx.itemCount ? `${tx.itemCount} item${tx.itemCount > 1 ? 's' : ''}` : "—"}
                         </TableCell>
                         <TableCell className="text-sm max-w-[200px] truncate">
                           {tx.note || tx.description || "—"}
