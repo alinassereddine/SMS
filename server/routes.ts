@@ -1357,8 +1357,7 @@ export async function registerRoutes(
         }
       }
 
-      await storage.deleteSaleItems(sale.id);
-      await storage.deleteSale(sale.id);
+      await storage.archiveSale(sale.id);
 
       res.status(204).send();
     } catch (error) {
@@ -1368,6 +1367,55 @@ export async function registerRoutes(
 
   app.post("/api/sales/:id/restore", requirePermission("sales:write"), async (req, res) => {
     try {
+      const sale = await storage.getSale(req.params.id);
+      if (!sale) return res.status(404).json({ error: "Sale not found" });
+
+      if (sale.cashRegisterSessionId) {
+        const session = await storage.getCashRegisterSession(sale.cashRegisterSessionId);
+        if (session && session.status === "closed") {
+          return res.status(400).json({
+            error: "Cannot restore: Sale is linked to a closed cash register session",
+          });
+        }
+      }
+
+      const saleItems = await storage.getSaleItems(sale.id);
+
+      for (const saleItem of saleItems) {
+        if (!saleItem.itemId) continue;
+        const item = await storage.getItem(saleItem.itemId);
+        if (!item) {
+          return res.status(400).json({
+            error: `Cannot restore: Item not found for sale line (itemId: ${saleItem.itemId})`,
+          });
+        }
+        if (item.status !== "available") {
+          return res.status(400).json({
+            error: `Cannot restore: Item ${item.imei} is not available (status: ${item.status})`,
+          });
+        }
+      }
+
+      for (const saleItem of saleItems) {
+        if (!saleItem.itemId) continue;
+        await storage.updateItem(saleItem.itemId, {
+          status: "sold",
+          salePrice: saleItem.unitPrice,
+          saleId: sale.id,
+          customerId: sale.customerId || null,
+          soldAt: sale.date,
+        });
+      }
+
+      if (sale.customerId && sale.balanceImpact > 0) {
+        const customer = await storage.getCustomer(sale.customerId);
+        if (customer) {
+          await storage.updateCustomer(sale.customerId, {
+            balance: (customer.balance || 0) + sale.balanceImpact,
+          });
+        }
+      }
+
       await storage.restoreSale(req.params.id);
       res.status(200).json({ message: "Sale restored" });
     } catch (error) {
@@ -1817,6 +1865,15 @@ export async function registerRoutes(
       const invoice = await storage.getPurchaseInvoice(req.params.id);
       if (!invoice) return res.status(404).json({ error: "Invoice not found" });
 
+      if (invoice.cashRegisterSessionId) {
+        const session = await storage.getCashRegisterSession(invoice.cashRegisterSessionId);
+        if (session && session.status === "closed") {
+          return res.status(400).json({
+            error: "Cannot delete: Purchase is linked to a closed cash register session",
+          });
+        }
+      }
+
       const invoiceItems = await storage.getPurchaseInvoiceItems(invoice.id);
 
       for (const invoiceItem of invoiceItems) {
@@ -1857,8 +1914,7 @@ export async function registerRoutes(
         }
       }
 
-      await storage.deletePurchaseInvoiceItems(invoice.id);
-      await storage.deletePurchaseInvoice(invoice.id);
+      await storage.archivePurchaseInvoice(invoice.id);
 
       res.status(204).send();
     } catch (error) {
@@ -1868,6 +1924,55 @@ export async function registerRoutes(
 
   app.post("/api/purchase-invoices/:id/restore", requirePermission("purchases:write"), async (req, res) => {
     try {
+      const invoice = await storage.getPurchaseInvoice(req.params.id);
+      if (!invoice) return res.status(404).json({ error: "Invoice not found" });
+
+      if (invoice.cashRegisterSessionId) {
+        const session = await storage.getCashRegisterSession(invoice.cashRegisterSessionId);
+        if (session && session.status === "closed") {
+          return res.status(400).json({
+            error: "Cannot restore: Purchase is linked to a closed cash register session",
+          });
+        }
+      }
+
+      const invoiceItems = await storage.getPurchaseInvoiceItems(invoice.id);
+      for (const invoiceItem of invoiceItems) {
+        if (!invoiceItem.itemId) continue;
+        const item = await storage.getItem(invoiceItem.itemId);
+        if (!item) {
+          return res.status(400).json({
+            error: `Cannot restore: Item not found for purchase line (itemId: ${invoiceItem.itemId})`,
+          });
+        }
+        if (item.status === "sold") {
+          return res.status(400).json({
+            error: `Cannot restore: Item ${item.imei} has been sold`,
+          });
+        }
+      }
+
+      for (const invoiceItem of invoiceItems) {
+        if (!invoiceItem.itemId) continue;
+        await storage.updateItem(invoiceItem.itemId, {
+          archived: false,
+          status: "available",
+          purchaseInvoiceId: invoice.id,
+          supplierId: invoice.supplierId,
+          purchasedAt: invoice.date,
+          purchasePrice: invoiceItem.unitPrice,
+        });
+      }
+
+      if (invoice.balanceImpact > 0) {
+        const supplier = await storage.getSupplier(invoice.supplierId);
+        if (supplier) {
+          await storage.updateSupplier(invoice.supplierId, {
+            balance: (supplier.balance || 0) + invoice.balanceImpact,
+          });
+        }
+      }
+
       await storage.restorePurchaseInvoice(req.params.id);
       res.status(200).json({ message: "Purchase invoice restored" });
     } catch (error) {
