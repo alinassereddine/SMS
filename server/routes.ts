@@ -39,9 +39,12 @@ async function computeSupplierBalanceCents(storage: IStorage, supplierId: string
     .reduce((sum, p) => sum + (p.totalAmount - (p.paidAmount || 0)), 0);
 
   const payments = await storage.getPaymentsByEntity("supplier", supplierId);
-  const paid = payments.reduce((sum, p) => sum + p.amount, 0);
+  const netPayments = payments.reduce((sum, p) => {
+    const isRefund = p.transactionType === "refund";
+    return sum + (isRefund ? p.amount : -p.amount);
+  }, 0);
 
-  return unpaid - paid;
+  return unpaid + netPayments;
 }
 
 const dateOnlyPattern = /^\d{4}-\d{2}-\d{2}$/;
@@ -853,15 +856,15 @@ export async function registerRoutes(
         date: string;
         type: "sale" | "payment";
         description: string;
-        debit: number;  // increases balance (what customer owes)
-        credit: number; // decreases balance (what customer paid)
+        debit: number;  // decreases balance (what customer paid)
+        credit: number; // increases balance (what customer owes)
         runningBalance: number;
         referenceId: string;
       };
 
       const ledgerEntries: Omit<LedgerEntry, "runningBalance">[] = [];
 
-      // Add sales as debits (customer owes the unpaid portion)
+      // Add sales as credits (customer owes the unpaid portion)
       for (const sale of customerSales) {
         const unpaidAmount = sale.totalAmount - (sale.paidAmount || 0);
         if (unpaidAmount > 0) {
@@ -870,8 +873,8 @@ export async function registerRoutes(
             date: String(sale.date),
             type: "sale",
             description: `Sale ${sale.saleNumber}`,
-            debit: unpaidAmount,
-            credit: 0,
+            debit: 0,
+            credit: unpaidAmount,
             referenceId: sale.id,
           });
         } else if (sale.totalAmount > 0 && (sale.paidAmount || 0) >= sale.totalAmount) {
@@ -888,7 +891,7 @@ export async function registerRoutes(
         }
       }
 
-      // Add payments/refunds (both reduce what customer owes)
+      // Add payments/refunds (payments reduce balance, refunds increase balance)
       for (const payment of payments) {
         const isRefund = payment.transactionType === "refund";
         const typeLabel = isRefund ? "Refund" : "Payment";
@@ -897,9 +900,9 @@ export async function registerRoutes(
           date: String(payment.date),
           type: "payment",
           description: `${typeLabel} - ${payment.paymentMethod}${payment.reference ? ` (${payment.reference})` : ""}`,
-          // Payment or refund always reduces what the customer owes.
-          debit: 0,
-          credit: payment.amount,
+          // Payment reduces balance, refund increases balance.
+          debit: isRefund ? 0 : payment.amount,
+          credit: isRefund ? payment.amount : 0,
           referenceId: payment.id,
         });
       }
@@ -910,7 +913,7 @@ export async function registerRoutes(
       // Calculate running balance
       let runningBalance = 0;
       const ledger: LedgerEntry[] = ledgerEntries.map(entry => {
-        runningBalance += entry.debit - entry.credit;
+        runningBalance += entry.credit - entry.debit;
         return { ...entry, runningBalance };
       });
 
@@ -944,20 +947,22 @@ export async function registerRoutes(
         unpaidBySupplierId.set(supplierId, (unpaidBySupplierId.get(supplierId) || 0) + unpaidAmount);
       }
 
-      const paidBySupplierId = new Map<string, number>();
+      const netPaymentsBySupplierId = new Map<string, number>();
       for (const payment of payments) {
         if (payment.type !== "supplier") continue;
-        paidBySupplierId.set(
+        const isRefund = payment.transactionType === "refund";
+        const delta = isRefund ? payment.amount : -payment.amount;
+        netPaymentsBySupplierId.set(
           payment.entityId,
-          (paidBySupplierId.get(payment.entityId) || 0) + payment.amount,
+          (netPaymentsBySupplierId.get(payment.entityId) || 0) + delta,
         );
       }
 
       res.json(
         suppliers.map((supplier) => {
           const unpaid = unpaidBySupplierId.get(supplier.id) || 0;
-          const paid = paidBySupplierId.get(supplier.id) || 0;
-          return { ...supplier, balance: unpaid - paid };
+          const netPayments = netPaymentsBySupplierId.get(supplier.id) || 0;
+          return { ...supplier, balance: unpaid + netPayments };
         }),
       );
     } catch (error) {
@@ -1101,15 +1106,15 @@ export async function registerRoutes(
         date: string;
         type: "purchase" | "payment";
         description: string;
-        debit: number;  // increases balance (what we owe supplier)
-        credit: number; // decreases balance (what we paid)
+        debit: number;  // decreases balance (what we paid)
+        credit: number; // increases balance (what we owe supplier)
         runningBalance: number;
         referenceId: string;
       };
 
       const ledgerEntries: Omit<LedgerEntry, "runningBalance">[] = [];
 
-      // Add purchases as debits (we owe the unpaid portion)
+      // Add purchases as credits (we owe the unpaid portion)
       for (const purchase of supplierPurchases) {
         const unpaidAmount = purchase.totalAmount - (purchase.paidAmount || 0);
         if (unpaidAmount > 0) {
@@ -1118,8 +1123,8 @@ export async function registerRoutes(
             date: String(purchase.date),
             type: "purchase",
             description: `Purchase ${purchase.invoiceNumber}`,
-            debit: unpaidAmount,
-            credit: 0,
+            debit: 0,
+            credit: unpaidAmount,
             referenceId: purchase.id,
           });
         } else if (purchase.totalAmount > 0 && (purchase.paidAmount || 0) >= purchase.totalAmount) {
@@ -1136,9 +1141,7 @@ export async function registerRoutes(
         }
       }
 
-      // Add payments/refunds
-      // Payment to supplier = credit (reduces what we owe)
-      // Refund from supplier = also credit (they return money, reduces what we owe)
+      // Add payments/refunds (payments reduce balance, refunds increase balance)
       for (const payment of payments) {
         const isRefund = payment.transactionType === "refund";
         const typeLabel = isRefund ? "Refund" : "Payment";
@@ -1147,8 +1150,8 @@ export async function registerRoutes(
           date: String(payment.date),
           type: "payment",
           description: `${typeLabel} - ${payment.paymentMethod}${payment.reference ? ` (${payment.reference})` : ""}`,
-          debit: 0,
-          credit: payment.amount,
+          debit: isRefund ? 0 : payment.amount,
+          credit: isRefund ? payment.amount : 0,
           referenceId: payment.id,
         });
       }
@@ -1159,7 +1162,7 @@ export async function registerRoutes(
       // Calculate running balance
       let runningBalance = 0;
       const ledger: LedgerEntry[] = ledgerEntries.map(entry => {
-        runningBalance += entry.debit - entry.credit;
+        runningBalance += entry.credit - entry.debit;
         return { ...entry, runningBalance };
       });
 

@@ -411,8 +411,8 @@ export default function CustomerDetails() {
                       <TableRow>
                         <TableHead>Date</TableHead>
                         <TableHead>Description</TableHead>
-                        <TableHead className="text-right">Debit (+)</TableHead>
-                        <TableHead className="text-right">Credit (-)</TableHead>
+                        <TableHead className="text-right">Debit (-)</TableHead>
+                        <TableHead className="text-right">Credit (+)</TableHead>
                         <TableHead className="text-right">Balance</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -432,14 +432,14 @@ export default function CustomerDetails() {
                           </TableCell>
                           <TableCell className="text-right font-mono">
                             {entry.debit > 0 ? (
-                              <span className="text-amber-600">+{formatCurrency(entry.debit)}</span>
+                              <span className="text-amber-600">-{formatCurrency(entry.debit)}</span>
                             ) : (
                               "-"
                             )}
                           </TableCell>
                           <TableCell className="text-right font-mono">
                             {entry.credit > 0 ? (
-                              <span className="text-emerald-600">-{formatCurrency(entry.credit)}</span>
+                              <span className="text-emerald-600">+{formatCurrency(entry.credit)}</span>
                             ) : (
                               "-"
                             )}
