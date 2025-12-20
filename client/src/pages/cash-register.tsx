@@ -40,7 +40,7 @@ import {
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { formatCurrency, formatDateTime, generateSessionNumber } from "@/lib/utils";
+import { formatCurrency, formatDateInput, formatDateTime, generateSessionNumber, parseDateValue } from "@/lib/utils";
 import type { CashRegisterSession } from "@shared/schema";
 import { Badge } from "@/components/ui/badge";
 
@@ -87,28 +87,34 @@ function exportSessionToCSV(session: CashRegisterSession) {
 
 type DatePreset = 'today' | 'week' | 'month' | 'year' | 'all';
 
-function getDateRange(preset: DatePreset): { from: Date | null; to: Date } {
+function getDateRange(preset: DatePreset): { from: Date | null; to: Date | null } {
   const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  
+  const startOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const endOfDay = (date: Date) =>
+    new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
+  const to = endOfDay(now);
+
   switch (preset) {
-    case 'today':
-      return { from: today, to: now };
-    case 'week':
-      const weekStart = new Date(today);
-      weekStart.setDate(today.getDate() - 7);
-      return { from: weekStart, to: now };
-    case 'month':
-      const monthStart = new Date(today);
-      monthStart.setMonth(today.getMonth() - 1);
-      return { from: monthStart, to: now };
-    case 'year':
-      const yearStart = new Date(today);
-      yearStart.setFullYear(today.getFullYear() - 1);
-      return { from: yearStart, to: now };
+    case 'today': {
+      const today = startOfDay(now);
+      return { from: today, to };
+    }
+    case 'week': {
+      const weekStart = startOfDay(new Date(now));
+      weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+      return { from: weekStart, to };
+    }
+    case 'month': {
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      return { from: monthStart, to };
+    }
+    case 'year': {
+      const yearStart = new Date(now.getFullYear(), 0, 1);
+      return { from: yearStart, to };
+    }
     case 'all':
     default:
-      return { from: null, to: now };
+      return { from: null, to: null };
   }
 }
 
@@ -231,7 +237,7 @@ export default function CashRegister() {
 
   const handleOpenEditDate = (session: CashRegisterSession) => {
     setEditSession(session);
-    setEditDate(new Date(session.openedAt).toISOString().split("T")[0]);
+    setEditDate(formatDateInput(session.openedAt));
   };
 
   const handleSaveEditDate = () => {
@@ -377,7 +383,7 @@ export default function CashRegister() {
     return new Date(a.date).getTime() - new Date(b.date).getTime();
   });
 
-  const { from: dateFrom } = getDateRange(datePreset);
+  const { from: dateFrom, to: dateTo } = getDateRange(datePreset);
   
   const filteredTransactions = sortedTransactions.filter(tx => {
     // Category filter
@@ -388,11 +394,12 @@ export default function CashRegister() {
     if (tx.type === 'opening') {
       return true;
     }
-    if (dateFrom) {
-      const txDate = new Date(tx.date);
-      if (txDate < dateFrom) {
-        return false;
-      }
+    const txDate = parseDateValue(tx.date);
+    if (dateFrom && (!txDate || txDate < dateFrom)) {
+      return false;
+    }
+    if (dateTo && (!txDate || txDate > dateTo)) {
+      return false;
     }
     return true;
   });

@@ -44,6 +44,21 @@ async function computeSupplierBalanceCents(storage: IStorage, supplierId: string
   return unpaid - paid;
 }
 
+const dateOnlyPattern = /^\d{4}-\d{2}-\d{2}$/;
+
+function parseDateInput(value?: string): Date | undefined {
+  if (!value) return undefined;
+  if (dateOnlyPattern.test(value)) {
+    const [year, month, day] = value.split("-").map(Number);
+    if (!Number.isNaN(year) && !Number.isNaN(month) && !Number.isNaN(day)) {
+      return new Date(year, month - 1, day);
+    }
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return undefined;
+  return parsed;
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -217,7 +232,7 @@ export async function registerRoutes(
           const paymentType =
             paidAmount >= totalAmount ? "full" : paidAmount > 0 ? "partial" : "credit";
 
-          const date = inv.date ? new Date(inv.date) : new Date();
+          const date = parseDateInput(inv.date) ?? new Date();
 
           const invoice = await storage.createPurchaseInvoice({
             invoiceNumber: inv.invoiceNumber,
@@ -326,7 +341,7 @@ export async function registerRoutes(
             continue;
           }
 
-          const date = saleGroup.date ? new Date(saleGroup.date) : new Date();
+          const date = parseDateInput(saleGroup.date) ?? new Date();
           const discountAmount = saleGroup.discountAmount ?? 0;
           const paidAmount = saleGroup.paidAmount ?? 0;
           const paymentMethod = (saleGroup.paymentMethod || "cash").toLowerCase();
@@ -1256,7 +1271,7 @@ export async function registerRoutes(
         return res.status(400).json({ error: "No open cash register session. Please open a session first." });
       }
       
-      const saleDate = data.date ? new Date(data.date) : new Date();
+      const saleDate = parseDateInput(data.date) ?? new Date();
       const discountAmount = data.discountAmount ?? 0;
       const subtotal = data.subtotal;
       if (discountAmount > subtotal) {
@@ -1730,7 +1745,7 @@ export async function registerRoutes(
       // 6. Update sale record
       const updatedSale = await storage.updateSale(sale.id, {
         customerId: newCustomerId,
-        date: data.date ? new Date(data.date) : sale.date,
+        date: parseDateInput(data.date) ?? sale.date,
         subtotal: newSubtotal,
         discountAmount: discountAmount,
         totalAmount: newTotal,
@@ -1834,7 +1849,7 @@ export async function registerRoutes(
         return res.status(400).json({ error: "No open cash register session. Please open a session first." });
       }
       
-      const invoiceDate = data.date ? new Date(data.date) : new Date();
+      const invoiceDate = parseDateInput(data.date) ?? new Date();
       const discountAmount = data.discountAmount ?? 0;
       const subtotal = data.subtotal;
       if (discountAmount > subtotal) {
@@ -2117,12 +2132,15 @@ export async function registerRoutes(
 
       // If date is being updated, cascade to all related inventory items
       if (data.date) {
-        updateData.date = new Date(data.date);
+        const parsedDate = parseDateInput(data.date);
+        if (parsedDate) {
+          updateData.date = parsedDate;
+        }
         const invoiceItems = await storage.getPurchaseInvoiceItems(req.params.id);
         for (const invoiceItem of invoiceItems) {
           if (invoiceItem.itemId) {
             await storage.updateItem(invoiceItem.itemId, {
-              purchasedAt: new Date(data.date),
+              purchasedAt: parsedDate ?? new Date(data.date),
             });
           }
         }
@@ -2223,7 +2241,7 @@ export async function registerRoutes(
       
       // 2. Update existing items' costs and date if date changed
       const existingItems = data.items.filter(i => i.itemId);
-      const newPurchaseDate = data.date ? new Date(data.date) : invoice.date;
+      const newPurchaseDate = parseDateInput(data.date) ?? invoice.date;
       for (const itemData of existingItems) {
         if (itemData.itemId) {
           const item = await storage.getItem(itemData.itemId);
@@ -2330,7 +2348,7 @@ export async function registerRoutes(
       // 7. Update invoice record
       const updatedInvoice = await storage.updatePurchaseInvoice(invoice.id, {
         supplierId: newSupplierId,
-        date: data.date ? new Date(data.date) : invoice.date,
+        date: parseDateInput(data.date) ?? invoice.date,
         subtotal: newSubtotal,
         discountAmount: discountAmount,
         totalAmount: newTotal,
@@ -2431,7 +2449,7 @@ export async function registerRoutes(
       
       const updateData: any = {};
       if (data.date) {
-        updateData.date = new Date(data.date);
+        updateData.date = parseDateInput(data.date) ?? new Date(data.date);
       }
       if (data.amount !== undefined) {
         // Handle amount change - need to adjust entity balance
@@ -2812,7 +2830,7 @@ export async function registerRoutes(
       const data = updateCashRegisterSessionDateSchema.parse(req.body);
       
       const updatedSession = await storage.updateCashRegisterSession(session.id, {
-        openedAt: new Date(data.openedAt),
+        openedAt: parseDateInput(data.openedAt) ?? new Date(data.openedAt),
       });
 
       res.json(updatedSession);

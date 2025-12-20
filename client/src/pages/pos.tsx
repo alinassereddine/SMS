@@ -38,7 +38,7 @@ import {
 import { CurrencyInput } from "@/components/currency-input";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { formatCurrency, generateSaleNumber, sortByName } from "@/lib/utils";
+import { formatCurrency, formatDateInput, generateSaleNumber, sortByName } from "@/lib/utils";
 import type { ItemWithProduct, Customer, CashRegisterSession } from "@shared/schema";
 
 interface CartItem {
@@ -46,7 +46,7 @@ interface CartItem {
   salePrice: number;
 }
 
-const getTodayDate = () => new Date().toISOString().split("T")[0];
+const getTodayDate = () => formatDateInput(new Date());
 
 export default function POS() {
   const [search, setSearch] = useState("");

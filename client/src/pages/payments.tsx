@@ -46,7 +46,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { formatCurrency, formatDate, formatDateTime, sortByName } from "@/lib/utils";
+import { formatCurrency, formatDate, formatDateInput, formatDateTime, parseDateValue, sortByName } from "@/lib/utils";
 import type { Payment, Customer, Supplier, PaymentWithEntity } from "@shared/schema";
 
 type DatePreset = "today" | "week" | "month" | "year" | "all";
@@ -59,30 +59,34 @@ const datePresets: { value: DatePreset; label: string }[] = [
   { value: "all", label: "All Time" },
 ];
 
-function getDateRange(preset: DatePreset): { from: Date | null; to: Date } {
+function getDateRange(preset: DatePreset): { from: Date | null; to: Date | null } {
   const now = new Date();
-  const to = now;
-  
+  const startOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const endOfDay = (date: Date) =>
+    new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
+  const to = endOfDay(now);
+
   switch (preset) {
-    case "today":
-      const today = new Date(now);
-      today.setHours(0, 0, 0, 0);
+    case "today": {
+      const today = startOfDay(now);
       return { from: today, to };
-    case "week":
-      const week = new Date(now);
-      week.setDate(now.getDate() - 7);
-      return { from: week, to };
-    case "month":
-      const month = new Date(now);
-      month.setMonth(now.getMonth() - 1);
-      return { from: month, to };
-    case "year":
-      const year = new Date(now);
-      year.setFullYear(now.getFullYear() - 1);
-      return { from: year, to };
+    }
+    case "week": {
+      const weekStart = startOfDay(new Date(now));
+      weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+      return { from: weekStart, to };
+    }
+    case "month": {
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      return { from: monthStart, to };
+    }
+    case "year": {
+      const yearStart = new Date(now.getFullYear(), 0, 1);
+      return { from: yearStart, to };
+    }
     case "all":
     default:
-      return { from: null, to };
+      return { from: null, to: null };
   }
 }
 
@@ -105,7 +109,7 @@ export default function Payments() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
-  const { from: dateFrom } = getDateRange(datePreset);
+  const { from: dateFrom, to: dateTo } = getDateRange(datePreset);
   const [editPayment, setEditPayment] = useState<PaymentWithEntity | null>(null);
   const [editDate, setEditDate] = useState<string>("");
   const [editAmount, setEditAmount] = useState(0);
@@ -184,7 +188,7 @@ export default function Payments() {
 
   const handleOpenEdit = (payment: PaymentWithEntity) => {
     setEditPayment(payment);
-    setEditDate(new Date(payment.date).toISOString().split("T")[0]);
+    setEditDate(formatDateInput(payment.date));
     setEditAmount(payment.amount);
     setEditPaymentMethod(payment.paymentMethod);
     setEditReference(payment.reference || "");
@@ -210,8 +214,10 @@ export default function Payments() {
     const matchesSearch = 
       payment.entity?.name?.toLowerCase().includes(search.toLowerCase()) ||
       payment.reference?.toLowerCase().includes(search.toLowerCase());
-    const paymentDate = new Date(payment.date);
-    const matchesDate = !dateFrom || paymentDate >= dateFrom;
+    const paymentDate = parseDateValue(payment.date);
+    const matchesDate =
+      (!dateFrom || (paymentDate && paymentDate >= dateFrom)) &&
+      (!dateTo || (paymentDate && paymentDate <= dateTo));
     return matchesType && matchesSearch && matchesDate;
   });
 

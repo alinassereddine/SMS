@@ -46,7 +46,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { formatCurrency, formatDate, formatDateTime, sortByName } from "@/lib/utils";
+import { formatCurrency, formatDate, formatDateInput, formatDateTime, parseDateValue, sortByName } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import type { Sale, SaleWithCustomer, Item, Product, Customer } from "@shared/schema";
 import { Link } from "wouter";
@@ -61,30 +61,34 @@ const datePresets: { value: DatePreset; label: string }[] = [
   { value: "all", label: "All Time" },
 ];
 
-function getDateRange(preset: DatePreset): { from: Date | null; to: Date } {
+function getDateRange(preset: DatePreset): { from: Date | null; to: Date | null } {
   const now = new Date();
-  const to = now;
-  
+  const startOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const endOfDay = (date: Date) =>
+    new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
+  const to = endOfDay(now);
+
   switch (preset) {
-    case "today":
-      const today = new Date(now);
-      today.setHours(0, 0, 0, 0);
+    case "today": {
+      const today = startOfDay(now);
       return { from: today, to };
-    case "week":
-      const week = new Date(now);
-      week.setDate(now.getDate() - 7);
-      return { from: week, to };
-    case "month":
-      const month = new Date(now);
-      month.setMonth(now.getMonth() - 1);
-      return { from: month, to };
-    case "year":
-      const year = new Date(now);
-      year.setFullYear(now.getFullYear() - 1);
-      return { from: year, to };
+    }
+    case "week": {
+      const weekStart = startOfDay(new Date(now));
+      weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+      return { from: weekStart, to };
+    }
+    case "month": {
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      return { from: monthStart, to };
+    }
+    case "year": {
+      const yearStart = new Date(now.getFullYear(), 0, 1);
+      return { from: yearStart, to };
+    }
     case "all":
     default:
-      return { from: null, to };
+      return { from: null, to: null };
   }
 }
 
@@ -107,7 +111,7 @@ export default function Sales() {
   const { can } = useAuth();
   const canDelete = can("sales:delete");
   const canImport = can("sales:write");
-  const { from: dateFrom } = getDateRange(datePreset);
+  const { from: dateFrom, to: dateTo } = getDateRange(datePreset);
   const [editSale, setEditSale] = useState<SaleWithCustomer | null>(null);
   const [editItems, setEditItems] = useState<EditItem[]>([]);
   const [editCustomerId, setEditCustomerId] = useState<string | null>(null);
@@ -281,7 +285,7 @@ export default function Sales() {
       })) || []
     );
     setEditCustomerId(sale.customerId || null);
-    setEditDate(new Date(sale.date).toISOString().split("T")[0]);
+    setEditDate(formatDateInput(sale.date));
     setEditDiscount(sale.discountAmount || 0);
     setEditPaidAmount(sale.paidAmount || 0);
     setEditNotes(sale.notes || "");
@@ -351,8 +355,10 @@ export default function Sales() {
       sale.saleNumber.toLowerCase().includes(search.toLowerCase()) ||
       sale.customer?.name.toLowerCase().includes(search.toLowerCase());
     const matchesPayment = paymentFilter === "all" || sale.paymentType === paymentFilter;
-    const saleDate = new Date(sale.date);
-    const matchesDate = !dateFrom || saleDate >= dateFrom;
+    const saleDate = parseDateValue(sale.date);
+    const matchesDate =
+      (!dateFrom || (saleDate && saleDate >= dateFrom)) &&
+      (!dateTo || (saleDate && saleDate <= dateTo));
     return matchesSearch && matchesPayment && matchesDate;
   });
 

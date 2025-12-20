@@ -58,7 +58,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { formatCurrency, formatDate, generateInvoiceNumber, sortByName } from "@/lib/utils";
+import { formatCurrency, formatDate, formatDateInput, generateInvoiceNumber, parseDateValue, sortByName } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import type { PurchaseInvoiceWithSupplier, Supplier, Product } from "@shared/schema";
 
@@ -72,34 +72,38 @@ const datePresets: { value: DatePreset; label: string }[] = [
   { value: "all", label: "All Time" },
 ];
 
-function getDateRange(preset: DatePreset): { from: Date | null; to: Date } {
+function getDateRange(preset: DatePreset): { from: Date | null; to: Date | null } {
   const now = new Date();
-  const to = now;
-  
+  const startOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const endOfDay = (date: Date) =>
+    new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
+  const to = endOfDay(now);
+
   switch (preset) {
-    case "today":
-      const today = new Date(now);
-      today.setHours(0, 0, 0, 0);
+    case "today": {
+      const today = startOfDay(now);
       return { from: today, to };
-    case "week":
-      const week = new Date(now);
-      week.setDate(now.getDate() - 7);
-      return { from: week, to };
-    case "month":
-      const month = new Date(now);
-      month.setMonth(now.getMonth() - 1);
-      return { from: month, to };
-    case "year":
-      const year = new Date(now);
-      year.setFullYear(now.getFullYear() - 1);
-      return { from: year, to };
+    }
+    case "week": {
+      const weekStart = startOfDay(new Date(now));
+      weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+      return { from: weekStart, to };
+    }
+    case "month": {
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      return { from: monthStart, to };
+    }
+    case "year": {
+      const yearStart = new Date(now.getFullYear(), 0, 1);
+      return { from: yearStart, to };
+    }
     case "all":
     default:
-      return { from: null, to };
+      return { from: null, to: null };
   }
 }
 
-const getTodayDate = () => new Date().toISOString().split("T")[0];
+const getTodayDate = () => formatDateInput(new Date());
 
 const purchaseFormSchema = z.object({
   supplierId: z.string().min(1, "Supplier is required"),
@@ -142,7 +146,7 @@ export default function Purchases() {
   const canSeeBalance = can("purchases:balance");
   const canDelete = can("purchases:delete");
   const canImport = can("purchases:write");
-  const { from: dateFrom } = getDateRange(datePreset);
+  const { from: dateFrom, to: dateTo } = getDateRange(datePreset);
   const [editPaidAmount, setEditPaidAmount] = useState(0);
   const [editNotes, setEditNotes] = useState("");
   const [showAddItem, setShowAddItem] = useState(false);
@@ -382,7 +386,7 @@ export default function Purchases() {
       })) || []
     );
     setEditSupplierId(invoice.supplierId);
-    setEditDate(new Date(invoice.date).toISOString().split("T")[0]);
+    setEditDate(formatDateInput(invoice.date));
     setEditDiscount(invoice.discountAmount || 0);
     setEditPaidAmount(invoice.paidAmount || 0);
     setEditNotes(invoice.notes || "");
@@ -477,8 +481,10 @@ export default function Purchases() {
   const filteredInvoices = invoices.filter((invoice) => {
     const matchesSearch = invoice.invoiceNumber.toLowerCase().includes(search.toLowerCase()) ||
       invoice.supplier?.name.toLowerCase().includes(search.toLowerCase());
-    const invoiceDate = new Date(invoice.date);
-    const matchesDate = !dateFrom || invoiceDate >= dateFrom;
+    const invoiceDate = parseDateValue(invoice.date);
+    const matchesDate =
+      (!dateFrom || (invoiceDate && invoiceDate >= dateFrom)) &&
+      (!dateTo || (invoiceDate && invoiceDate <= dateTo));
     return matchesSearch && matchesDate;
   });
 

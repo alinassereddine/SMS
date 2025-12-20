@@ -24,6 +24,21 @@ export type ImportResult = {
   errors: ImportError[];
 };
 
+const dateOnlyPattern = /^\d{4}-\d{2}-\d{2}$/;
+
+function parseDateInput(value?: string): Date | undefined {
+  if (!value) return undefined;
+  if (dateOnlyPattern.test(value)) {
+    const [year, month, day] = value.split("-").map(Number);
+    if (!Number.isNaN(year) && !Number.isNaN(month) && !Number.isNaN(day)) {
+      return new Date(year, month - 1, day);
+    }
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return undefined;
+  return parsed;
+}
+
 type PurchaseImportRow = {
   invoiceNumber: string;
   supplier: string;
@@ -117,7 +132,8 @@ export function parseExpensesImport(buffer: Buffer, filename: string): {
       archived: false,
     };
 
-    if (date) payload.date = new Date(date);
+    const parsedDate = parseDateInput(date);
+    if (parsedDate) payload.date = parsedDate;
 
     const parsed = insertExpenseSchema.safeParse(payload);
     if (!parsed.success) {
@@ -277,7 +293,8 @@ export function parsePaymentsImport(buffer: Buffer, filename: string): {
       archived: false,
     };
 
-    if (date) payload.date = new Date(date);
+    const parsedDate = parseDateInput(date);
+    if (parsedDate) payload.date = parsedDate;
 
     const parsed = insertPaymentSchema.safeParse(payload);
     if (!parsed.success) {

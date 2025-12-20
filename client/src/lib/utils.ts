@@ -13,9 +13,34 @@ export function formatCurrency(cents: number): string {
   }).format(cents / 100);
 }
 
+const dateOnlyPattern = /^\d{4}-\d{2}-\d{2}$/;
+
+export function parseDateValue(date: Date | string | null | undefined): Date | null {
+  if (!date) return null;
+  if (date instanceof Date) return date;
+  if (dateOnlyPattern.test(date)) {
+    const [year, month, day] = date.split("-").map(Number);
+    if (!Number.isNaN(year) && !Number.isNaN(month) && !Number.isNaN(day)) {
+      return new Date(year, month - 1, day);
+    }
+  }
+  const parsed = new Date(date);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+export function formatDateInput(date: Date | string | null | undefined): string {
+  const d = parseDateValue(date);
+  if (!d) return "";
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 export function formatDate(date: Date | string | null | undefined): string {
   if (!date) return "-";
-  const d = typeof date === "string" ? new Date(date) : date;
+  const d = parseDateValue(date);
+  if (!d) return "-";
   return new Intl.DateTimeFormat("en-US", {
     year: "numeric",
     month: "short",
@@ -25,7 +50,8 @@ export function formatDate(date: Date | string | null | undefined): string {
 
 export function formatDateTime(date: Date | string | null | undefined): string {
   if (!date) return "-";
-  const d = typeof date === "string" ? new Date(date) : date;
+  const d = parseDateValue(date);
+  if (!d) return "-";
   return new Intl.DateTimeFormat("en-US", {
     year: "numeric",
     month: "short",
