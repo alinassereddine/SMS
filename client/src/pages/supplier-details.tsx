@@ -366,6 +366,7 @@ export default function SupplierDetails() {
                     <TableBody>
                       {payments.map((payment) => {
                         const isRefund = payment.transactionType === "refund";
+                        const amount = Math.abs(payment.amount);
                         return (
                           <TableRow key={payment.id} data-testid={`row-payment-${payment.id}`}>
                             <TableCell>{formatDate(payment.date)}</TableCell>
@@ -382,10 +383,10 @@ export default function SupplierDetails() {
                             </TableCell>
                             <TableCell className={`text-right font-mono ${
                               isRefund 
-                                ? "text-emerald-600 dark:text-emerald-400" 
-                                : "text-red-600 dark:text-red-400"
+                                ? "text-red-600 dark:text-red-400"
+                                : "text-emerald-600 dark:text-emerald-400"
                             }`}>
-                              {isRefund ? "+" : "-"}{formatCurrency(payment.amount)}
+                              {isRefund ? "+" : "-"}{formatCurrency(amount)}
                             </TableCell>
                             <TableCell className="text-muted-foreground text-sm max-w-[200px] truncate">
                               {payment.notes || "-"}

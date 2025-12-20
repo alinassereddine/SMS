@@ -359,6 +359,7 @@ export default function CustomerDetails() {
                     <TableBody>
                       {payments.map((payment) => {
                         const isRefund = payment.transactionType === "refund";
+                        const amount = Math.abs(payment.amount);
                         return (
                           <TableRow key={payment.id} data-testid={`row-payment-${payment.id}`}>
                             <TableCell>{formatDate(payment.date)}</TableCell>
@@ -375,10 +376,10 @@ export default function CustomerDetails() {
                             </TableCell>
                             <TableCell className={`text-right font-mono ${
                               isRefund 
-                                ? "text-red-600 dark:text-red-400" 
-                                : "text-emerald-600 dark:text-emerald-400"
+                                ? "text-emerald-600 dark:text-emerald-400"
+                                : "text-red-600 dark:text-red-400"
                             }`}>
-                              {isRefund ? "+" : "-"}{formatCurrency(payment.amount)}
+                              {isRefund ? "+" : "-"}{formatCurrency(amount)}
                             </TableCell>
                             <TableCell className="text-muted-foreground text-sm max-w-[200px] truncate">
                               {payment.notes || "-"}
@@ -412,8 +413,8 @@ export default function CustomerDetails() {
                       <TableRow>
                         <TableHead>Date</TableHead>
                         <TableHead>Description</TableHead>
-                        <TableHead className="text-right">Debit (+/-)</TableHead>
-                        <TableHead className="text-right">Credit (+)</TableHead>
+                        <TableHead className="text-right">Debit (+)</TableHead>
+                        <TableHead className="text-right">Credit (-)</TableHead>
                         <TableHead className="text-right">Balance</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -433,23 +434,14 @@ export default function CustomerDetails() {
                           </TableCell>
                           <TableCell className="text-right font-mono">
                             {entry.debit > 0 ? (
-                              <span
-                                className={
-                                  entry.type === "payment" && entry.transactionType === "refund"
-                                    ? "text-red-600 dark:text-red-400"
-                                    : "text-emerald-600 dark:text-emerald-400"
-                                }
-                              >
-                                {entry.type === "payment" && entry.transactionType === "refund" ? "+" : "-"}
-                                {formatCurrency(entry.debit)}
-                              </span>
+                              <span className="text-emerald-600">+{formatCurrency(entry.debit)}</span>
                             ) : (
                               "-"
                             )}
                           </TableCell>
                           <TableCell className="text-right font-mono">
                             {entry.credit > 0 ? (
-                              <span className="text-emerald-600">+{formatCurrency(entry.credit)}</span>
+                              <span className="text-red-600">-{formatCurrency(entry.credit)}</span>
                             ) : (
                               "-"
                             )}

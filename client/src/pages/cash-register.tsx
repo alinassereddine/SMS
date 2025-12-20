@@ -121,6 +121,7 @@ function getDateRange(preset: DatePreset): { from: Date | null; to: Date | null 
 interface SessionTransaction {
   id: string;
   type: 'sale' | 'payment' | 'supplier_payment' | 'purchase' | 'expense' | 'opening';
+  transactionType?: 'payment' | 'refund';
   description: string;
   amount: number;
   cashAmount: number;
@@ -414,6 +415,17 @@ export default function CashRegister() {
     return { ...tx, balance: runningBalance };
   });
 
+  const getTransactionDisplay = (tx: SessionTransaction) => {
+    const isPaymentTx = tx.type === "payment" || tx.type === "supplier_payment";
+    if (isPaymentTx) {
+      const isRefund = tx.transactionType === "refund";
+      const isCustomer = tx.type === "payment";
+      const isPositive = isCustomer ? !isRefund : isRefund;
+      return { amount: Math.abs(tx.amount), isPositive };
+    }
+    return { amount: Math.abs(tx.cashAmount), isPositive: tx.cashAmount >= 0 };
+  };
+
   const totalInflows = allTransactions
     .filter(tx => tx.cashAmount > 0)
     .reduce((sum, tx) => sum + tx.cashAmount, 0);
@@ -588,13 +600,18 @@ export default function CashRegister() {
                               {formatCurrency(0)}
                             </span>
                           ) : (
+                            (() => {
+                              const display = getTransactionDisplay(tx);
+                              return (
                             <span className={`font-mono text-sm font-medium ${
-                              tx.cashAmount >= 0 
+                              display.isPositive
                                 ? "text-emerald-600 dark:text-emerald-400" 
                                 : "text-red-600 dark:text-red-400"
                             }`}>
-                              {tx.cashAmount >= 0 ? "+" : ""}{formatCurrency(tx.cashAmount)}
+                              {display.isPositive ? "+" : "-"}{formatCurrency(display.amount)}
                             </span>
+                              );
+                            })()
                           )}
                         </TableCell>
                         <TableCell className="text-right">

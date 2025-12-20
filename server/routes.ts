@@ -33,7 +33,20 @@ import {
 } from "./import";
 
 function getPaymentBalanceDelta(payment: { amount: number; transactionType?: string }) {
-  return payment.transactionType === "refund" ? payment.amount : -payment.amount;
+  const amount = Math.abs(payment.amount);
+  return payment.transactionType === "refund" ? amount : -amount;
+}
+
+async function computeCustomerBalanceCents(storage: IStorage, customerId: string) {
+  const sales = await storage.getSales();
+  const unpaid = sales
+    .filter((s) => s.customerId === customerId)
+    .reduce((sum, s) => sum + (s.totalAmount - (s.paidAmount || 0)), 0);
+
+  const payments = await storage.getPaymentsByEntity("customer", customerId);
+  const netPayments = payments.reduce((sum, p) => sum + getPaymentBalanceDelta(p), 0);
+
+  return unpaid + netPayments;
 }
 
 async function computeSupplierBalanceCents(storage: IStorage, supplierId: string) {
@@ -720,7 +733,35 @@ export async function registerRoutes(
   app.get("/api/customers", async (req, res) => {
     try {
       const customers = await storage.getCustomers();
-      res.json(customers);
+      const sales = await storage.getSales();
+      const payments = await storage.getPayments();
+
+      const unpaidByCustomerId = new Map<string, number>();
+      for (const sale of sales) {
+        const customerId = sale.customerId;
+        if (!customerId) continue;
+        const unpaidAmount = sale.totalAmount - (sale.paidAmount || 0);
+        if (unpaidAmount === 0) continue;
+        unpaidByCustomerId.set(customerId, (unpaidByCustomerId.get(customerId) || 0) + unpaidAmount);
+      }
+
+      const netPaymentsByCustomerId = new Map<string, number>();
+      for (const payment of payments) {
+        if (payment.type !== "customer") continue;
+        const delta = getPaymentBalanceDelta(payment);
+        netPaymentsByCustomerId.set(
+          payment.entityId,
+          (netPaymentsByCustomerId.get(payment.entityId) || 0) + delta,
+        );
+      }
+
+      res.json(
+        customers.map((customer) => {
+          const unpaid = unpaidByCustomerId.get(customer.id) || 0;
+          const netPayments = netPaymentsByCustomerId.get(customer.id) || 0;
+          return { ...customer, balance: unpaid + netPayments };
+        }),
+      );
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch customers" });
     }
@@ -730,7 +771,11 @@ export async function registerRoutes(
     try {
       const customer = await storage.getCustomer(req.params.id);
       if (!customer) return res.status(404).json({ error: "Customer not found" });
-      res.json(customer);
+      const balance = await computeCustomerBalanceCents(storage, customer.id);
+      if ((customer.balance || 0) !== balance) {
+        await storage.updateCustomer(customer.id, { balance });
+      }
+      res.json({ ...customer, balance });
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch customer" });
     }
@@ -858,15 +903,15 @@ export async function registerRoutes(
         type: "sale" | "payment";
         transactionType?: "payment" | "refund";
         description: string;
-        debit: number;  // decreases balance (what customer paid)
-        credit: number; // increases balance (what customer owes)
+        debit: number;  // increases balance (what customer owes)
+        credit: number; // decreases balance (what customer paid)
         runningBalance: number;
         referenceId: string;
       };
 
       const ledgerEntries: Omit<LedgerEntry, "runningBalance">[] = [];
 
-      // Add sales as credits (customer owes the unpaid portion)
+      // Add sales as debits (customer owes the unpaid portion)
       for (const sale of customerSales) {
         const unpaidAmount = sale.totalAmount - (sale.paidAmount || 0);
         if (unpaidAmount > 0) {
@@ -875,8 +920,8 @@ export async function registerRoutes(
             date: String(sale.date),
             type: "sale",
             description: `Sale ${sale.saleNumber}`,
-            debit: 0,
-            credit: unpaidAmount,
+            debit: unpaidAmount,
+            credit: 0,
             referenceId: sale.id,
           });
         } else if (sale.totalAmount > 0 && (sale.paidAmount || 0) >= sale.totalAmount) {
@@ -897,6 +942,7 @@ export async function registerRoutes(
       for (const payment of payments) {
         const isRefund = payment.transactionType === "refund";
         const typeLabel = isRefund ? "Refund" : "Payment";
+        const amount = Math.abs(payment.amount);
         ledgerEntries.push({
           id: `payment-${payment.id}`,
           date: String(payment.date),
@@ -904,8 +950,8 @@ export async function registerRoutes(
           transactionType: payment.transactionType,
           description: `${typeLabel} - ${payment.paymentMethod}${payment.reference ? ` (${payment.reference})` : ""}`,
           // Payment reduces balance, refund increases balance.
-          debit: payment.amount,
-          credit: 0,
+          debit: isRefund ? amount : 0,
+          credit: isRefund ? 0 : amount,
           referenceId: payment.id,
         });
       }
@@ -916,17 +962,17 @@ export async function registerRoutes(
       // Calculate running balance
       let runningBalance = 0;
       const ledger: LedgerEntry[] = ledgerEntries.map(entry => {
-        if (entry.type === "payment") {
-          const isRefund = entry.transactionType === "refund";
-          runningBalance += isRefund ? entry.debit : -entry.debit;
-        } else {
-          runningBalance += entry.credit - entry.debit;
-        }
+        runningBalance += entry.debit - entry.credit;
         return { ...entry, runningBalance };
       });
 
+      const currentBalance = runningBalance;
+      if ((customer.balance || 0) !== currentBalance) {
+        await storage.updateCustomer(customer.id, { balance: currentBalance });
+      }
+
       res.json({
-        customer,
+        customer: { ...customer, balance: currentBalance },
         sales: salesWithItems,
         payments: sortedPayments,
         ledger,
@@ -1152,13 +1198,14 @@ export async function registerRoutes(
       for (const payment of payments) {
         const isRefund = payment.transactionType === "refund";
         const typeLabel = isRefund ? "Refund" : "Payment";
+        const amount = Math.abs(payment.amount);
         ledgerEntries.push({
           id: `payment-${payment.id}`,
           date: String(payment.date),
           type: "payment",
           description: `${typeLabel} - ${payment.paymentMethod}${payment.reference ? ` (${payment.reference})` : ""}`,
-          debit: isRefund ? 0 : payment.amount,
-          credit: isRefund ? payment.amount : 0,
+          debit: isRefund ? 0 : amount,
+          credit: isRefund ? amount : 0,
           referenceId: payment.id,
         });
       }
@@ -2613,13 +2660,35 @@ export async function registerRoutes(
       const expenses = await storage.getExpenses();
       const purchases = await storage.getPurchaseInvoices();
 
-      const sessionSales = sales.filter(s => s.cashRegisterSessionId === session.id);
-      const sessionPayments = payments.filter(p => p.cashRegisterSessionId === session.id);
+      const sessionSales = sales.filter(
+        (s) => s.cashRegisterSessionId === session.id || (!s.cashRegisterSessionId && isInActiveSessionWindow(s.date)),
+      );
+      const sessionPayments = payments.filter(
+        (p) => p.cashRegisterSessionId === session.id || (!p.cashRegisterSessionId && isInActiveSessionWindow(p.date)),
+      );
       const sessionExpenses = expenses.filter(e => e.cashRegisterSessionId === session.id);
       // Backfill: older purchases may have no session id but belong to the currently open session by date.
       const sessionPurchases = purchases.filter(
         (p) => p.cashRegisterSessionId === session.id || (!p.cashRegisterSessionId && isInActiveSessionWindow(p.date)),
       );
+
+      const salesToAttach = sessionSales.filter((s) => !s.cashRegisterSessionId);
+      if (salesToAttach.length > 0) {
+        await Promise.all(
+          salesToAttach.map((s) =>
+            storage.updateSale(s.id, { cashRegisterSessionId: session.id }),
+          ),
+        );
+      }
+
+      const paymentsToAttach = sessionPayments.filter((p) => !p.cashRegisterSessionId);
+      if (paymentsToAttach.length > 0) {
+        await Promise.all(
+          paymentsToAttach.map((p) =>
+            storage.updatePayment(p.id, { cashRegisterSessionId: session.id }),
+          ),
+        );
+      }
 
       const purchasesToAttach = sessionPurchases.filter((p) => !p.cashRegisterSessionId);
       if (purchasesToAttach.length > 0) {
@@ -2639,10 +2708,11 @@ export async function registerRoutes(
         .reduce((sum, p) => {
           const isRefund = p.transactionType === "refund";
           const isCustomer = p.type === "customer";
+          const amount = Math.abs(p.amount);
           if (isCustomer) {
-            return sum + (isRefund ? -p.amount : p.amount);
+            return sum + (isRefund ? -amount : amount);
           } else {
-            return sum + (isRefund ? p.amount : -p.amount);
+            return sum + (isRefund ? amount : -amount);
           }
         }, 0);
       
@@ -2688,6 +2758,7 @@ export async function registerRoutes(
       const transactions: Array<{
         id: string;
         type: 'sale' | 'payment' | 'supplier_payment' | 'purchase' | 'expense';
+        transactionType?: 'payment' | 'refund';
         description: string;
         amount: number;
         cashAmount: number;
@@ -2718,22 +2789,24 @@ export async function registerRoutes(
         const direction = payment.type === 'customer' 
           ? (isRefund ? 'to' : 'from')
           : (isRefund ? 'from' : 'to');
+        const amount = Math.abs(payment.amount);
         
         // Calculate cash impact
         let cashAmount = 0;
         if (payment.paymentMethod === 'cash') {
           if (payment.type === 'customer') {
-            cashAmount = isRefund ? -payment.amount : payment.amount;
+            cashAmount = isRefund ? -amount : amount;
           } else {
-            cashAmount = isRefund ? payment.amount : -payment.amount;
+            cashAmount = isRefund ? amount : -amount;
           }
         }
         
         transactions.push({
           id: payment.id,
           type: payment.type === "customer" ? 'payment' : 'supplier_payment',
+          transactionType: payment.transactionType,
           description: `${typeLabel} ${direction} ${entityName}`,
-          amount: payment.amount,
+          amount,
           cashAmount,
           paymentMethod: payment.paymentMethod,
           date: String(payment.date),
@@ -2844,12 +2917,34 @@ export async function registerRoutes(
       const expenses = await storage.getExpenses();
       const purchases = await storage.getPurchaseInvoices();
 
-      const sessionSales = sales.filter(s => s.cashRegisterSessionId === session.id);
-      const sessionPayments = payments.filter(p => p.cashRegisterSessionId === session.id);
+      const sessionSales = sales.filter(
+        (s) => s.cashRegisterSessionId === session.id || (!s.cashRegisterSessionId && isInActiveSessionWindow(s.date)),
+      );
+      const sessionPayments = payments.filter(
+        (p) => p.cashRegisterSessionId === session.id || (!p.cashRegisterSessionId && isInActiveSessionWindow(p.date)),
+      );
       const sessionExpenses = expenses.filter(e => e.cashRegisterSessionId === session.id);
       const sessionPurchases = purchases.filter(
         (p) => p.cashRegisterSessionId === session.id || (!p.cashRegisterSessionId && isInActiveSessionWindow(p.date)),
       );
+
+      const salesToAttach = sessionSales.filter((s) => !s.cashRegisterSessionId);
+      if (salesToAttach.length > 0) {
+        await Promise.all(
+          salesToAttach.map((s) =>
+            storage.updateSale(s.id, { cashRegisterSessionId: session.id }),
+          ),
+        );
+      }
+
+      const paymentsToAttach = sessionPayments.filter((p) => !p.cashRegisterSessionId);
+      if (paymentsToAttach.length > 0) {
+        await Promise.all(
+          paymentsToAttach.map((p) =>
+            storage.updatePayment(p.id, { cashRegisterSessionId: session.id }),
+          ),
+        );
+      }
 
       const purchasesToAttach = sessionPurchases.filter((p) => !p.cashRegisterSessionId);
       if (purchasesToAttach.length > 0) {
@@ -2872,12 +2967,13 @@ export async function registerRoutes(
         .reduce((sum, p) => {
           const isRefund = p.transactionType === "refund";
           const isCustomer = p.type === "customer";
+          const amount = Math.abs(p.amount);
           // Customer payment = +, Customer refund = -
           // Supplier payment = -, Supplier refund = +
           if (isCustomer) {
-            return sum + (isRefund ? -p.amount : p.amount);
+            return sum + (isRefund ? -amount : amount);
           } else {
-            return sum + (isRefund ? p.amount : -p.amount);
+            return sum + (isRefund ? amount : -amount);
           }
         }, 0);
       

@@ -279,18 +279,22 @@ export default function Payments() {
       header: "Amount",
       render: (payment) => {
         const isRefund = payment.transactionType === "refund";
-        const isFromCustomer = payment.type === "customer";
-        // Payment from customer = positive (we receive), Refund to customer = negative (we give back)
-        // Payment to supplier = negative (we pay), Refund from supplier = positive (we receive back)
-        const isPositive = isFromCustomer ? !isRefund : isRefund;
+        const amount = Math.abs(payment.amount);
+        // Payment reduces balance, refund increases balance.
+        const isPositive = isRefund;
+        const isSupplier = payment.type === "supplier";
+        const positiveClass = isSupplier
+          ? "text-red-600 dark:text-red-400"
+          : "text-emerald-600 dark:text-emerald-400";
+        const negativeClass = isSupplier
+          ? "text-emerald-600 dark:text-emerald-400"
+          : "text-red-600 dark:text-red-400";
         return (
           <div className="flex items-center gap-2">
             <span className={`font-mono text-sm font-medium ${
-              isPositive 
-                ? "text-emerald-600 dark:text-emerald-400" 
-                : "text-red-600 dark:text-red-400"
+              isPositive ? positiveClass : negativeClass
             }`}>
-              {isPositive ? "+" : "-"}{formatCurrency(payment.amount)}
+              {isPositive ? "+" : "-"}{formatCurrency(amount)}
             </span>
             {isRefund && (
               <Badge variant="outline" className="text-xs">Refund</Badge>
@@ -359,8 +363,18 @@ export default function Payments() {
     },
   ];
 
-  const customerPayments = payments.filter(p => p.type === "customer").reduce((sum, p) => sum + p.amount, 0);
-  const supplierPayments = payments.filter(p => p.type === "supplier").reduce((sum, p) => sum + p.amount, 0);
+  const customerNet = payments
+    .filter((p) => p.type === "customer")
+    .reduce((sum, p) => {
+      const amount = Math.abs(p.amount);
+      return sum + (p.transactionType === "refund" ? amount : -amount);
+    }, 0);
+  const supplierNet = payments
+    .filter((p) => p.type === "supplier")
+    .reduce((sum, p) => {
+      const amount = Math.abs(p.amount);
+      return sum + (p.transactionType === "refund" ? amount : -amount);
+    }, 0);
 
   const downloadTemplate = () => {
     const header = [
@@ -499,16 +513,24 @@ export default function Payments() {
         </Card>
         <Card>
           <CardContent className="pt-6">
-            <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
-              +{formatCurrency(customerPayments)}
+            <div className={`text-2xl font-bold ${
+              customerNet >= 0
+                ? "text-emerald-600 dark:text-emerald-400"
+                : "text-red-600 dark:text-red-400"
+            }`}>
+              {customerNet >= 0 ? "+" : "-"}{formatCurrency(Math.abs(customerNet))}
             </div>
             <p className="text-xs text-muted-foreground">From Customers</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6">
-            <div className="text-2xl font-bold text-red-600 dark:text-red-400">
-              -{formatCurrency(supplierPayments)}
+            <div className={`text-2xl font-bold ${
+              supplierNet >= 0
+                ? "text-red-600 dark:text-red-400"
+                : "text-emerald-600 dark:text-emerald-400"
+            }`}>
+              {supplierNet >= 0 ? "+" : "-"}{formatCurrency(Math.abs(supplierNet))}
             </div>
             <p className="text-xs text-muted-foreground">To Suppliers</p>
           </CardContent>

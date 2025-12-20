@@ -38,8 +38,8 @@ const DialogContent = React.forwardRef<
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        // Force full-screen dialogs even if callers pass `max-w-*` or `w-*` classes.
-        "fixed inset-0 z-50 flex !h-[100dvh] !w-[100dvw] !max-w-[100dvw] flex-col overflow-hidden bg-background shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+        // Force 75% viewport dialogs even if callers pass `max-w-*` or `w-*` classes.
+        "fixed left-1/2 top-1/2 z-50 flex !h-[75dvh] !w-[75dvw] !max-h-[75dvh] !max-w-[75dvw] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-lg bg-background shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
         className
       )}
       {...props}
