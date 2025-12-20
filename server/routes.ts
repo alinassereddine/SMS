@@ -527,9 +527,7 @@ export async function registerRoutes(
             cashRegisterSessionId: payment.cashRegisterSessionId || null,
           });
 
-          const isRefund = created.transactionType === "refund";
-          const balanceChange =
-            created.type === "supplier" ? -created.amount : isRefund ? created.amount : -created.amount;
+          const balanceChange = -created.amount;
 
           if (created.type === "customer") {
             const customer = await storage.getCustomer(created.entityId);
@@ -890,7 +888,7 @@ export async function registerRoutes(
         }
       }
 
-      // Add payments/refunds (payments reduce what customer owes, refunds increase)
+      // Add payments/refunds (both reduce what customer owes)
       for (const payment of payments) {
         const isRefund = payment.transactionType === "refund";
         const typeLabel = isRefund ? "Refund" : "Payment";
@@ -899,10 +897,9 @@ export async function registerRoutes(
           date: String(payment.date),
           type: "payment",
           description: `${typeLabel} - ${payment.paymentMethod}${payment.reference ? ` (${payment.reference})` : ""}`,
-          // Payment from customer = credit (reduces balance)
-          // Refund to customer = debit (increases balance - we give money back, they owe more)
-          debit: isRefund ? payment.amount : 0,
-          credit: isRefund ? 0 : payment.amount,
+          // Payment or refund always reduces what the customer owes.
+          debit: 0,
+          credit: payment.amount,
           referenceId: payment.id,
         });
       }
@@ -916,9 +913,6 @@ export async function registerRoutes(
         runningBalance += entry.debit - entry.credit;
         return { ...entry, runningBalance };
       });
-
-      // Reverse for display (most recent first)
-      ledger.reverse();
 
       res.json({
         customer,
@@ -1173,9 +1167,6 @@ export async function registerRoutes(
       if ((supplier.balance || 0) !== currentBalance) {
         await storage.updateSupplier(supplier.id, { balance: currentBalance });
       }
-
-      // Reverse for display (most recent first)
-      ledger.reverse();
 
       res.json({
         supplier: { ...supplier, balance: currentBalance },
@@ -2404,9 +2395,7 @@ export async function registerRoutes(
       // Determine balance impact based on transaction type
       // Payment: reduces balance (entity owes less)
       // Refund: increases balance (entity owes more / we owe less)
-      const isRefund = data.transactionType === "refund";
-      const balanceChange =
-        data.type === "supplier" ? -data.amount : isRefund ? data.amount : -data.amount;
+      const balanceChange = -data.amount;
       
       const payment = await storage.createPayment({
         ...data,
@@ -2455,9 +2444,7 @@ export async function registerRoutes(
         // Handle amount change - need to adjust entity balance
         const amountDiff = data.amount - payment.amount;
         if (amountDiff !== 0) {
-          const isRefund = payment.transactionType === "refund";
-          const balanceChange =
-            payment.type === "supplier" ? -amountDiff : isRefund ? amountDiff : -amountDiff;
+          const balanceChange = -amountDiff;
            
           if (payment.type === "customer") {
             const customer = await storage.getCustomer(payment.entityId);

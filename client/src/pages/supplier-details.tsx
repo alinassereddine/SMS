@@ -14,7 +14,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { ArrowLeft, Building2, Phone, Mail, MapPin, Package, CreditCard, Receipt, ChevronDown, ChevronRight, Download } from "lucide-react";
 import { ExportButton } from "@/components/export-button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -274,7 +273,7 @@ export default function SupplierDetails() {
               {purchases.length === 0 ? (
                 <p className="text-center text-muted-foreground py-8">No purchases yet</p>
               ) : (
-                <ScrollArea className="max-h-[600px]">
+                <div className="max-h-[600px] overflow-y-auto pr-2">
                   <div className="space-y-2">
                     {purchases.map((purchase) => {
                       const balance = purchase.totalAmount - (purchase.paidAmount || 0);
@@ -337,7 +336,7 @@ export default function SupplierDetails() {
                       );
                     })}
                   </div>
-                </ScrollArea>
+                </div>
               )}
             </CardContent>
           </Card>
@@ -352,7 +351,7 @@ export default function SupplierDetails() {
               {payments.length === 0 ? (
                 <p className="text-center text-muted-foreground py-8">No payments yet</p>
               ) : (
-                <ScrollArea className="max-h-[500px]">
+                <div className="max-h-[500px] overflow-y-auto pr-2">
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -396,7 +395,7 @@ export default function SupplierDetails() {
                       })}
                     </TableBody>
                   </Table>
-                </ScrollArea>
+                </div>
               )}
             </CardContent>
           </Card>
@@ -414,7 +413,7 @@ export default function SupplierDetails() {
               {ledger.length === 0 ? (
                 <p className="text-center text-muted-foreground py-8">No transactions yet</p>
               ) : (
-                <ScrollArea className="max-h-[500px]">
+                <div className="max-h-[500px] overflow-y-auto pr-2">
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -462,7 +461,7 @@ export default function SupplierDetails() {
                       ))}
                     </TableBody>
                   </Table>
-                </ScrollArea>
+                </div>
               )}
             </CardContent>
           </Card>
