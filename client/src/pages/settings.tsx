@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Settings, Shield, Bell, Database, Palette, Coins, Plus, MoreHorizontal, Star, Trash2, Archive, RotateCcw, AlertTriangle, Users, Building2, ShoppingCart, Package } from "lucide-react";
+import { Settings, Shield, Bell, Database, Palette, Coins, Plus, MoreHorizontal, Star, Trash2, Archive, RotateCcw, AlertTriangle, Users, Building2, ShoppingCart, Package, Wallet } from "lucide-react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,7 +18,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { insertCurrencySchema, type Currency, type InsertCurrency, type Customer, type Supplier, type Sale, type PurchaseInvoice } from "@shared/schema";
+import { insertCurrencySchema, type Currency, type InsertCurrency, type Customer, type Supplier, type Sale, type PurchaseInvoice, type Payment } from "@shared/schema";
 import { formatDate, formatCurrency } from "@/lib/utils";
 import {
   AlertDialog,
@@ -51,11 +51,14 @@ export default function SettingsPage() {
   });
 
   // Archive state and queries
+  type ArchivedPayment = Payment & { entityName?: string };
+
   interface ArchivedData {
     customers: Customer[];
     suppliers: Supplier[];
     sales: Sale[];
     purchases: PurchaseInvoice[];
+    payments: ArchivedPayment[];
   }
   
   const { data: archivedData, isLoading: archivedLoading } = useQuery<ArchivedData>({
@@ -65,7 +68,7 @@ export default function SettingsPage() {
   const [confirmDialog, setConfirmDialog] = useState<{
     open: boolean;
     type: "restore" | "delete";
-    entityType: "customer" | "supplier" | "sale" | "purchase";
+    entityType: "customer" | "supplier" | "sale" | "purchase" | "payment";
     entityId: string;
     entityName: string;
   } | null>(null);
@@ -154,6 +157,29 @@ export default function SettingsPage() {
     onError: () => toast({ title: "Failed to delete purchase", variant: "destructive" }),
   });
 
+  const restorePaymentMutation = useMutation({
+    mutationFn: (id: string) => apiRequest("POST", `/api/payments/${id}/restore`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/archived"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/suppliers"] });
+      toast({ title: "Payment restored successfully" });
+      setConfirmDialog(null);
+    },
+    onError: () => toast({ title: "Failed to restore payment", variant: "destructive" }),
+  });
+
+  const hardDeletePaymentMutation = useMutation({
+    mutationFn: (id: string) => apiRequest("DELETE", `/api/payments/${id}/hard-delete`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/archived"] });
+      toast({ title: "Payment permanently deleted" });
+      setConfirmDialog(null);
+    },
+    onError: () => toast({ title: "Failed to delete payment", variant: "destructive" }),
+  });
+
   const handleArchiveAction = () => {
     if (!confirmDialog) return;
     const { type, entityType, entityId } = confirmDialog;
@@ -164,6 +190,7 @@ export default function SettingsPage() {
         case "supplier": restoreSupplierMutation.mutate(entityId); break;
         case "sale": restoreSaleMutation.mutate(entityId); break;
         case "purchase": restorePurchaseMutation.mutate(entityId); break;
+        case "payment": restorePaymentMutation.mutate(entityId); break;
       }
     } else {
       switch (entityType) {
@@ -171,6 +198,7 @@ export default function SettingsPage() {
         case "supplier": hardDeleteSupplierMutation.mutate(entityId); break;
         case "sale": hardDeleteSaleMutation.mutate(entityId); break;
         case "purchase": hardDeletePurchaseMutation.mutate(entityId); break;
+        case "payment": hardDeletePaymentMutation.mutate(entityId); break;
       }
     }
   };
@@ -647,7 +675,7 @@ export default function SettingsPage() {
             <CardHeader>
               <CardTitle className="text-base">Archived Items</CardTitle>
               <CardDescription>
-                View and manage archived customers, suppliers, sales, and purchases. 
+                View and manage archived customers, suppliers, sales, purchases, and payments.
                 Archived items are hidden from main lists but their related transactions are preserved.
               </CardDescription>
             </CardHeader>
@@ -891,6 +919,70 @@ export default function SettingsPage() {
                       </div>
                     ) : (
                       <p className="text-sm text-muted-foreground py-2">No archived purchases</p>
+                    )}
+                  </div>
+
+                  <Separator />
+
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2">
+                      <Wallet className="h-4 w-4 text-muted-foreground" />
+                      <h3 className="font-medium">Archived Payments ({archivedData?.payments?.length || 0})</h3>
+                    </div>
+                    {archivedData?.payments && archivedData.payments.length > 0 ? (
+                      <div className="space-y-2">
+                        {archivedData.payments.map((payment) => (
+                          <div
+                            key={payment.id}
+                            className="flex items-center justify-between gap-4 p-3 rounded-lg border"
+                            data-testid={`archived-payment-${payment.id}`}
+                          >
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium truncate">
+                                {payment.entityName || payment.entityId}
+                              </p>
+                              <p className="text-sm text-muted-foreground">
+                                {formatDate(payment.date)} · {payment.type} · {payment.transactionType}
+                              </p>
+                            </div>
+                            <div className="text-right text-sm">
+                              <p>{formatCurrency(payment.amount)}</p>
+                            </div>
+                            <div className="flex gap-1">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setConfirmDialog({
+                                  open: true,
+                                  type: "restore",
+                                  entityType: "payment",
+                                  entityId: payment.id,
+                                  entityName: `Payment ${formatCurrency(payment.amount)}`,
+                                })}
+                                data-testid={`button-restore-payment-${payment.id}`}
+                              >
+                                <RotateCcw className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                onClick={() => setConfirmDialog({
+                                  open: true,
+                                  type: "delete",
+                                  entityType: "payment",
+                                  entityId: payment.id,
+                                  entityName: `Payment ${formatCurrency(payment.amount)}`,
+                                })}
+                                data-testid={`button-delete-payment-${payment.id}`}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground py-2">No archived payments</p>
                     )}
                   </div>
                 </>

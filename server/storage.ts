@@ -90,10 +90,14 @@ export interface IStorage {
   deleteSaleItems(saleId: string): Promise<void>;
 
   getPayments(): Promise<Payment[]>;
+  getArchivedPayments(): Promise<Payment[]>;
   getPayment(id: string): Promise<Payment | undefined>;
   getPaymentsByEntity(type: string, entityId: string): Promise<Payment[]>;
   createPayment(data: InsertPayment): Promise<Payment>;
   updatePayment(id: string, data: Partial<InsertPayment>): Promise<Payment>;
+  archivePayment(id: string): Promise<void>;
+  restorePayment(id: string): Promise<void>;
+  hardDeletePayment(id: string): Promise<void>;
 
   getCashRegisterSessions(): Promise<CashRegisterSession[]>;
   getCashRegisterSession(id: string): Promise<CashRegisterSession | undefined>;
@@ -435,6 +439,10 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(payments).where(eq(payments.archived, false)).orderBy(desc(payments.date));
   }
 
+  async getArchivedPayments(): Promise<Payment[]> {
+    return await db.select().from(payments).where(eq(payments.archived, true)).orderBy(desc(payments.date));
+  }
+
   async getPayment(id: string): Promise<Payment | undefined> {
     const [payment] = await db.select().from(payments).where(eq(payments.id, id));
     return payment || undefined;
@@ -452,6 +460,18 @@ export class DatabaseStorage implements IStorage {
   async updatePayment(id: string, data: Partial<InsertPayment>): Promise<Payment> {
     const [payment] = await db.update(payments).set(data).where(eq(payments.id, id)).returning();
     return payment;
+  }
+
+  async archivePayment(id: string): Promise<void> {
+    await db.update(payments).set({ archived: true }).where(eq(payments.id, id));
+  }
+
+  async restorePayment(id: string): Promise<void> {
+    await db.update(payments).set({ archived: false }).where(eq(payments.id, id));
+  }
+
+  async hardDeletePayment(id: string): Promise<void> {
+    await db.delete(payments).where(eq(payments.id, id));
   }
 
   async getCashRegisterSessions(): Promise<CashRegisterSession[]> {

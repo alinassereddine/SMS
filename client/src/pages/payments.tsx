@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Wallet, MoreHorizontal, Eye, User, Truck, Pencil, Upload, Download } from "lucide-react";
+import { Plus, Wallet, MoreHorizontal, Eye, User, Truck, Pencil, Upload, Download, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { ExportButton } from "@/components/export-button";
 import { DataTable, Column } from "@/components/data-table";
@@ -16,6 +16,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -110,7 +120,9 @@ export default function Payments() {
   const [isImporting, setIsImporting] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
   const { from: dateFrom, to: dateTo } = getDateRange(datePreset);
+  const [viewPayment, setViewPayment] = useState<PaymentWithEntity | null>(null);
   const [editPayment, setEditPayment] = useState<PaymentWithEntity | null>(null);
+  const [deleteConfirmPayment, setDeleteConfirmPayment] = useState<PaymentWithEntity | null>(null);
   const [editDate, setEditDate] = useState<string>("");
   const [editAmount, setEditAmount] = useState(0);
   const [editPaymentMethod, setEditPaymentMethod] = useState<string>("cash");
@@ -183,6 +195,23 @@ export default function Payments() {
     },
     onError: (error: any) => {
       toast({ title: error.message || "Failed to update payment", variant: "destructive" });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      return apiRequest("DELETE", `/api/payments/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/archived"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/suppliers"] });
+      setDeleteConfirmPayment(null);
+      toast({ title: "Payment archived successfully" });
+    },
+    onError: (error: any) => {
+      toast({ title: error.message || "Failed to delete payment", variant: "destructive" });
     },
   });
 
@@ -309,17 +338,24 @@ export default function Payments() {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => handleOpenEdit(payment)}>
-              <Pencil className="h-4 w-4 mr-2" />
-              Edit
-            </DropdownMenuItem>
-            <DropdownMenuItem>
-              <Eye className="h-4 w-4 mr-2" />
-              View Details
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      ),
+          <DropdownMenuItem onClick={() => handleOpenEdit(payment)}>
+            <Pencil className="h-4 w-4 mr-2" />
+            Edit
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setViewPayment(payment)}>
+            <Eye className="h-4 w-4 mr-2" />
+            View Details
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => setDeleteConfirmPayment(payment)}
+            className="text-destructive"
+          >
+            <Trash2 className="h-4 w-4 mr-2" />
+            Archive
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    ),
     },
   ];
 
@@ -774,6 +810,85 @@ export default function Payments() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={!!viewPayment} onOpenChange={(open) => !open && setViewPayment(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Payment Details</DialogTitle>
+            <DialogDescription>
+              {viewPayment?.entity?.name || "Unknown"}
+            </DialogDescription>
+          </DialogHeader>
+          {viewPayment && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground uppercase">Type</p>
+                  <p className="font-medium capitalize">{viewPayment.type}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground uppercase">Transaction</p>
+                  <p className="font-medium capitalize">{viewPayment.transactionType}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground uppercase">Date</p>
+                  <p className="font-medium">{formatDateTime(viewPayment.date)}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground uppercase">Amount</p>
+                  <p className="font-mono font-medium">{formatCurrency(viewPayment.amount)}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground uppercase">Method</p>
+                  <p className="font-medium capitalize">{viewPayment.paymentMethod}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground uppercase">Reference</p>
+                  <p className="font-mono text-sm">{viewPayment.reference || "-"}</p>
+                </div>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground uppercase">Notes</p>
+                <p className="text-sm">{viewPayment.notes || "-"}</p>
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setViewPayment(null)}>
+                  Close
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog
+        open={!!deleteConfirmPayment}
+        onOpenChange={(open) => !open && setDeleteConfirmPayment(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Archive Payment</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will archive the payment and remove it from the main list. You can restore it
+              or permanently delete it later from Settings &gt; Archive.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault();
+                if (deleteConfirmPayment) deleteMutation.mutate(deleteConfirmPayment.id);
+              }}
+              disabled={deleteMutation.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              data-testid="button-confirm-archive-payment"
+            >
+              {deleteMutation.isPending ? "Archiving..." : "Archive"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

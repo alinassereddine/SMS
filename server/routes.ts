@@ -32,6 +32,10 @@ import {
   parseExpensesImport,
 } from "./import";
 
+function getPaymentBalanceDelta(payment: { amount: number; transactionType?: string }) {
+  return payment.transactionType === "refund" ? payment.amount : -payment.amount;
+}
+
 async function computeSupplierBalanceCents(storage: IStorage, supplierId: string) {
   const purchases = await storage.getPurchaseInvoices();
   const unpaid = purchases
@@ -39,10 +43,7 @@ async function computeSupplierBalanceCents(storage: IStorage, supplierId: string
     .reduce((sum, p) => sum + (p.totalAmount - (p.paidAmount || 0)), 0);
 
   const payments = await storage.getPaymentsByEntity("supplier", supplierId);
-  const netPayments = payments.reduce((sum, p) => {
-    const isRefund = p.transactionType === "refund";
-    return sum + (isRefund ? p.amount : -p.amount);
-  }, 0);
+  const netPayments = payments.reduce((sum, p) => sum + getPaymentBalanceDelta(p), 0);
 
   return unpaid + netPayments;
 }
@@ -530,7 +531,7 @@ export async function registerRoutes(
             cashRegisterSessionId: payment.cashRegisterSessionId || null,
           });
 
-          const balanceChange = -created.amount;
+          const balanceChange = getPaymentBalanceDelta(created);
 
           if (created.type === "customer") {
             const customer = await storage.getCustomer(created.entityId);
@@ -950,8 +951,7 @@ export async function registerRoutes(
       const netPaymentsBySupplierId = new Map<string, number>();
       for (const payment of payments) {
         if (payment.type !== "supplier") continue;
-        const isRefund = payment.transactionType === "refund";
-        const delta = isRefund ? payment.amount : -payment.amount;
+        const delta = getPaymentBalanceDelta(payment);
         netPaymentsBySupplierId.set(
           payment.entityId,
           (netPaymentsBySupplierId.get(payment.entityId) || 0) + delta,
@@ -2398,7 +2398,7 @@ export async function registerRoutes(
       // Determine balance impact based on transaction type
       // Payment: reduces balance (entity owes less)
       // Refund: increases balance (entity owes more / we owe less)
-      const balanceChange = -data.amount;
+      const balanceChange = getPaymentBalanceDelta(data);
       
       const payment = await storage.createPayment({
         ...data,
@@ -2445,9 +2445,13 @@ export async function registerRoutes(
       }
       if (data.amount !== undefined) {
         // Handle amount change - need to adjust entity balance
-        const amountDiff = data.amount - payment.amount;
-        if (amountDiff !== 0) {
-          const balanceChange = -amountDiff;
+        if (data.amount !== payment.amount) {
+          const oldDelta = getPaymentBalanceDelta(payment);
+          const newDelta = getPaymentBalanceDelta({
+            amount: data.amount,
+            transactionType: payment.transactionType,
+          });
+          const balanceChange = newDelta - oldDelta;
            
           if (payment.type === "customer") {
             const customer = await storage.getCustomer(payment.entityId);
@@ -2484,6 +2488,91 @@ export async function registerRoutes(
         return res.status(400).json({ error: error.errors });
       }
       res.status(500).json({ error: "Failed to update payment" });
+    }
+  });
+
+  app.delete("/api/payments/:id", requirePermission("payments:delete"), async (req, res) => {
+    try {
+      const payment = await storage.getPayment(req.params.id);
+      if (!payment) return res.status(404).json({ error: "Payment not found" });
+
+      if (payment.cashRegisterSessionId) {
+        const session = await storage.getCashRegisterSession(payment.cashRegisterSessionId);
+        if (session && session.status === "closed") {
+          return res.status(400).json({
+            error: "Cannot delete: Payment is linked to a closed cash register session",
+          });
+        }
+      }
+
+      const balanceChange = -getPaymentBalanceDelta(payment);
+      if (payment.type === "customer") {
+        const customer = await storage.getCustomer(payment.entityId);
+        if (customer) {
+          await storage.updateCustomer(payment.entityId, {
+            balance: (customer.balance || 0) + balanceChange,
+          });
+        }
+      } else if (payment.type === "supplier") {
+        const supplier = await storage.getSupplier(payment.entityId);
+        if (supplier) {
+          await storage.updateSupplier(payment.entityId, {
+            balance: (supplier.balance || 0) + balanceChange,
+          });
+        }
+      }
+
+      await storage.archivePayment(payment.id);
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete payment" });
+    }
+  });
+
+  app.post("/api/payments/:id/restore", requirePermission("payments:write"), async (req, res) => {
+    try {
+      const payment = await storage.getPayment(req.params.id);
+      if (!payment) return res.status(404).json({ error: "Payment not found" });
+
+      if (payment.cashRegisterSessionId) {
+        const session = await storage.getCashRegisterSession(payment.cashRegisterSessionId);
+        if (session && session.status === "closed") {
+          return res.status(400).json({
+            error: "Cannot restore: Payment is linked to a closed cash register session",
+          });
+        }
+      }
+
+      const balanceChange = getPaymentBalanceDelta(payment);
+      if (payment.type === "customer") {
+        const customer = await storage.getCustomer(payment.entityId);
+        if (customer) {
+          await storage.updateCustomer(payment.entityId, {
+            balance: (customer.balance || 0) + balanceChange,
+          });
+        }
+      } else if (payment.type === "supplier") {
+        const supplier = await storage.getSupplier(payment.entityId);
+        if (supplier) {
+          await storage.updateSupplier(payment.entityId, {
+            balance: (supplier.balance || 0) + balanceChange,
+          });
+        }
+      }
+
+      await storage.restorePayment(payment.id);
+      res.status(200).json({ message: "Payment restored" });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to restore payment" });
+    }
+  });
+
+  app.delete("/api/payments/:id/hard-delete", requirePermission("payments:delete"), async (req, res) => {
+    try {
+      await storage.hardDeletePayment(req.params.id);
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ error: "Failed to permanently delete payment" });
     }
   });
 
@@ -2999,13 +3088,30 @@ export async function registerRoutes(
   // ============ ARCHIVED DATA ============
   app.get("/api/archived", async (req, res) => {
     try {
-      const [customers, suppliers, sales, purchases] = await Promise.all([
+      const [customers, suppliers, sales, purchases, payments, activeCustomers, activeSuppliers] = await Promise.all([
         storage.getArchivedCustomers(),
         storage.getArchivedSuppliers(),
         storage.getArchivedSales(),
         storage.getArchivedPurchaseInvoices(),
+        storage.getArchivedPayments(),
+        storage.getCustomers(),
+        storage.getSuppliers(),
       ]);
-      res.json({ customers, suppliers, sales, purchases });
+      const customerMap = new Map(
+        [...activeCustomers, ...customers].map((customer) => [customer.id, customer.name]),
+      );
+      const supplierMap = new Map(
+        [...activeSuppliers, ...suppliers].map((supplier) => [supplier.id, supplier.name]),
+      );
+      const enrichedPayments = payments.map((payment) => ({
+        ...payment,
+        entityName:
+          payment.type === "customer"
+            ? customerMap.get(payment.entityId)
+            : supplierMap.get(payment.entityId),
+      }));
+
+      res.json({ customers, suppliers, sales, purchases, payments: enrichedPayments });
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch archived data" });
     }

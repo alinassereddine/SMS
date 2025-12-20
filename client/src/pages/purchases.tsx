@@ -351,7 +351,7 @@ export default function Purchases() {
       queryClient.invalidateQueries({ queryKey: ["/api/items"] });
       queryClient.invalidateQueries({ queryKey: ["/api/suppliers"] });
       setDeleteConfirmInvoice(null);
-      toast({ title: "Purchase invoice deleted successfully" });
+      toast({ title: "Purchase invoice archived successfully" });
     },
     onError: (error: Error) => {
       toast({ title: error.message || "Failed to delete invoice", variant: "destructive" });
@@ -564,7 +564,7 @@ export default function Purchases() {
                 className="text-destructive"
               >
                 <Trash2 className="h-4 w-4 mr-2" />
-                Delete
+                Archive
               </DropdownMenuItem>
             )}
           </DropdownMenuContent>
@@ -929,12 +929,12 @@ export default function Purchases() {
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
               <AlertTriangle className="h-5 w-5 text-destructive" />
-              Delete Purchase Invoice
+              Archive Purchase Invoice
             </AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete invoice{" "}
+              This will archive invoice{" "}
               <span className="font-mono font-medium">{deleteConfirmInvoice?.invoiceNumber}</span>{" "}
-              and remove all associated inventory items.
+              and its items. You can restore it or permanently delete it later from Settings &gt; Archive.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -948,7 +948,7 @@ export default function Purchases() {
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               data-testid="button-confirm-delete"
             >
-              {deleteMutation.isPending ? "Deleting..." : "Delete"}
+              {deleteMutation.isPending ? "Archiving..." : "Archive"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
