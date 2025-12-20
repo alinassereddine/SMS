@@ -856,6 +856,7 @@ export async function registerRoutes(
         id: string;
         date: string;
         type: "sale" | "payment";
+        transactionType?: "payment" | "refund";
         description: string;
         debit: number;  // decreases balance (what customer paid)
         credit: number; // increases balance (what customer owes)
@@ -900,10 +901,11 @@ export async function registerRoutes(
           id: `payment-${payment.id}`,
           date: String(payment.date),
           type: "payment",
+          transactionType: payment.transactionType,
           description: `${typeLabel} - ${payment.paymentMethod}${payment.reference ? ` (${payment.reference})` : ""}`,
           // Payment reduces balance, refund increases balance.
-          debit: isRefund ? 0 : payment.amount,
-          credit: isRefund ? payment.amount : 0,
+          debit: payment.amount,
+          credit: 0,
           referenceId: payment.id,
         });
       }
@@ -914,7 +916,12 @@ export async function registerRoutes(
       // Calculate running balance
       let runningBalance = 0;
       const ledger: LedgerEntry[] = ledgerEntries.map(entry => {
-        runningBalance += entry.credit - entry.debit;
+        if (entry.type === "payment") {
+          const isRefund = entry.transactionType === "refund";
+          runningBalance += isRefund ? entry.debit : -entry.debit;
+        } else {
+          runningBalance += entry.credit - entry.debit;
+        }
         return { ...entry, runningBalance };
       });
 

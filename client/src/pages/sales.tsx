@@ -754,7 +754,7 @@ export default function Sales() {
                   No items. Add at least one item.
                 </p>
               ) : (
-                <ScrollArea className="max-h-[260px] pr-2">
+                <div className="max-h-[260px] overflow-y-auto pr-2">
                   <div className="space-y-2">
                     {editItems.map((item) => (
                       <div key={item.itemId} className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
@@ -784,7 +784,7 @@ export default function Sales() {
                       </div>
                     ))}
                   </div>
-                </ScrollArea>
+                </div>
               )}
             </div>
 
