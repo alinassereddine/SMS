@@ -46,6 +46,8 @@ interface CartItem {
   salePrice: number;
 }
 
+const getTodayDate = () => new Date().toISOString().split("T")[0];
+
 export default function POS() {
   const [search, setSearch] = useState("");
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -54,6 +56,7 @@ export default function POS() {
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [paidAmount, setPaidAmount] = useState(0);
   const [discount, setDiscount] = useState(0);
+  const [saleDate, setSaleDate] = useState(getTodayDate());
   const { toast } = useToast();
 
   const { data: items = [], isLoading: itemsLoading } = useQuery<ItemWithProduct[]>({
@@ -101,11 +104,18 @@ export default function POS() {
 
   const createSaleMutation = useMutation({
     mutationFn: async () => {
+      if (discount > subtotal) {
+        throw new Error("Discount cannot exceed subtotal");
+      }
+      if (paidAmount > total) {
+        throw new Error("Paid amount cannot exceed total");
+      }
       const paymentType = paidAmount >= total ? "full" : paidAmount > 0 ? "partial" : "credit";
       
       return apiRequest("POST", "/api/sales", {
         saleNumber: generateSaleNumber(),
         customerId: customerId || null,
+        date: saleDate,
         subtotal,
         discountAmount: discount,
         totalAmount: total,
@@ -153,6 +163,7 @@ export default function POS() {
     setPaymentMethod("cash");
     setPaidAmount(0);
     setDiscount(0);
+    setSaleDate(getTodayDate());
   };
 
   const handleCheckoutDialogChange = (open: boolean) => {
@@ -168,6 +179,7 @@ export default function POS() {
       return;
     }
     setPaymentMethod("cash");
+    setSaleDate(getTodayDate());
     setPaidAmount(total);
     setIsCheckoutOpen(true);
   };
@@ -378,6 +390,10 @@ export default function POS() {
 
           <div className="space-y-4">
             <div>
+              <label className="text-sm font-medium mb-2 block">Sale Date</label>
+              <Input type="date" value={saleDate} onChange={(e) => setSaleDate(e.target.value)} />
+            </div>
+            <div>
               <label className="text-sm font-medium mb-2 block">Payment Method</label>
               <div className="grid grid-cols-3 gap-2">
                 {[
@@ -397,6 +413,11 @@ export default function POS() {
                   </Button>
                 ))}
               </div>
+            </div>
+
+            <div>
+              <label className="text-sm font-medium mb-2 block">Discount</label>
+              <CurrencyInput value={discount} onChange={setDiscount} />
             </div>
 
             <div>

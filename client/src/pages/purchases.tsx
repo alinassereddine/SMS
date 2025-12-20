@@ -99,8 +99,12 @@ function getDateRange(preset: DatePreset): { from: Date | null; to: Date } {
   }
 }
 
+const getTodayDate = () => new Date().toISOString().split("T")[0];
+
 const purchaseFormSchema = z.object({
   supplierId: z.string().min(1, "Supplier is required"),
+  date: z.string().optional(),
+  discountAmount: z.number().min(0).optional(),
   paidAmount: z.number().min(0),
   notes: z.string().optional(),
 });
@@ -259,13 +263,21 @@ export default function Purchases() {
     resolver: zodResolver(purchaseFormSchema),
     defaultValues: {
       supplierId: "",
+      date: getTodayDate(),
+      discountAmount: 0,
       paidAmount: 0,
       notes: "",
     },
   });
 
   const resetNewPurchaseForm = () => {
-    form.reset();
+    form.reset({
+      supplierId: "",
+      date: getTodayDate(),
+      discountAmount: 0,
+      paidAmount: 0,
+      notes: "",
+    });
     setItemEntries([{ productId: "", imei: "", unitPrice: 0 }]);
   };
 
@@ -284,16 +296,26 @@ export default function Purchases() {
       }
 
       const subtotal = validItems.reduce((sum, i) => sum + i.unitPrice, 0);
-      const paymentType = data.paidAmount >= subtotal ? "full" : data.paidAmount > 0 ? "partial" : "credit";
+      const discountAmount = data.discountAmount ?? 0;
+      if (discountAmount > subtotal) {
+        throw new Error("Discount cannot exceed subtotal");
+      }
+      const totalAmount = Math.max(0, subtotal - discountAmount);
+      if (data.paidAmount > totalAmount) {
+        throw new Error("Paid amount cannot exceed total");
+      }
+      const paymentType =
+        data.paidAmount >= totalAmount ? "full" : data.paidAmount > 0 ? "partial" : "credit";
 
       return apiRequest("POST", "/api/purchase-invoices", {
         invoiceNumber: generateInvoiceNumber("PUR"),
         supplierId: data.supplierId,
+        date: data.date,
         subtotal,
-        discountAmount: 0,
-        totalAmount: subtotal,
+        discountAmount,
+        totalAmount,
         paidAmount: data.paidAmount,
-        balanceImpact: subtotal - data.paidAmount,
+        balanceImpact: Math.max(0, totalAmount - data.paidAmount),
         paymentType,
         notes: data.notes,
         items: validItems.map(item => ({
@@ -308,8 +330,7 @@ export default function Purchases() {
       queryClient.invalidateQueries({ queryKey: ["/api/items"] });
       queryClient.invalidateQueries({ queryKey: ["/api/suppliers"] });
       setIsDialogOpen(false);
-      form.reset();
-      setItemEntries([{ productId: "", imei: "", unitPrice: 0 }]);
+      resetNewPurchaseForm();
       toast({ title: "Purchase invoice created successfully" });
     },
     onError: (error: Error) => {
@@ -450,6 +471,8 @@ export default function Purchases() {
   };
 
   const subtotal = itemEntries.reduce((sum, i) => sum + (i.unitPrice || 0), 0);
+  const discountAmount = form.watch("discountAmount") || 0;
+  const totalAmount = Math.max(0, subtotal - discountAmount);
 
   const filteredInvoices = invoices.filter((invoice) => {
     const matchesSearch = invoice.invoiceNumber.toLowerCase().includes(search.toLowerCase()) ||
@@ -663,30 +686,45 @@ export default function Purchases() {
           </DialogHeader>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
-              <FormField
-                control={form.control}
-                name="supplierId"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Supplier</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
+              <div className="grid gap-4 md:grid-cols-2">
+                <FormField
+                  control={form.control}
+                  name="supplierId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Supplier</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger data-testid="select-purchase-supplier">
+                            <SelectValue placeholder="Select supplier" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {sortedSuppliers.map((supplier) => (
+                            <SelectItem key={supplier.id} value={supplier.id}>
+                              {supplier.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="date"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Date</FormLabel>
                       <FormControl>
-                        <SelectTrigger data-testid="select-purchase-supplier">
-                          <SelectValue placeholder="Select supplier" />
-                        </SelectTrigger>
+                        <Input type="date" value={field.value || ""} onChange={field.onChange} />
                       </FormControl>
-                      <SelectContent>
-                        {sortedSuppliers.map((supplier) => (
-                          <SelectItem key={supplier.id} value={supplier.id}>
-                            {supplier.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
 
               <div>
                 <div className="flex items-center justify-between mb-2">
@@ -746,6 +784,25 @@ export default function Purchases() {
               <div className="flex justify-between items-center">
                 <span className="text-sm font-medium">Subtotal</span>
                 <span className="font-mono font-bold text-lg">{formatCurrency(subtotal)}</span>
+              </div>
+
+              <FormField
+                control={form.control}
+                name="discountAmount"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Discount</FormLabel>
+                    <FormControl>
+                      <CurrencyInput value={field.value || 0} onChange={field.onChange} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <div className="flex justify-between items-center">
+                <span className="text-sm font-medium">Total</span>
+                <span className="font-mono font-bold text-lg">{formatCurrency(totalAmount)}</span>
               </div>
 
               <FormField
@@ -989,7 +1046,7 @@ export default function Purchases() {
                 </Card>
               )}
 
-              <ScrollArea className="max-h-[200px]">
+              <ScrollArea className="max-h-[260px] pr-2">
                 <div className="space-y-2">
                   {editItems.map((item, index) => (
                     <div

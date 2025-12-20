@@ -1232,6 +1232,7 @@ export async function registerRoutes(
   // Create sale with items
   const createSaleSchema = z.object({
     customerId: z.string().nullable().optional(),
+    date: z.string().optional(),
     subtotal: z.number(),
     discountAmount: z.number().optional(),
     totalAmount: z.number(),
@@ -1255,6 +1256,20 @@ export async function registerRoutes(
         return res.status(400).json({ error: "No open cash register session. Please open a session first." });
       }
       
+      const saleDate = data.date ? new Date(data.date) : new Date();
+      const discountAmount = data.discountAmount ?? 0;
+      const subtotal = data.subtotal;
+      if (discountAmount > subtotal) {
+        return res.status(400).json({ error: "Discount cannot exceed subtotal" });
+      }
+      const totalAmount = Math.max(0, subtotal - discountAmount);
+      const paidAmount = data.paidAmount ?? 0;
+      if (paidAmount > totalAmount) {
+        return res.status(400).json({ error: "Paid amount cannot exceed total" });
+      }
+      const paymentType =
+        paidAmount >= totalAmount ? "full" : paidAmount > 0 ? "partial" : "credit";
+
       // Generate sale number
       const sales = await storage.getSales();
       const saleNumber = `S${String(sales.length + 1).padStart(6, "0")}`;
@@ -1276,19 +1291,21 @@ export async function registerRoutes(
         };
       }));
 
-      const balanceImpact = data.totalAmount - (data.paidAmount || 0);
+      const balanceImpact = Math.max(0, totalAmount - paidAmount);
+      totalProfit = Math.max(0, totalProfit - discountAmount);
 
       // Create the sale
       const sale = await storage.createSale({
         saleNumber,
         customerId: data.customerId || null,
-        subtotal: data.subtotal,
-        discountAmount: data.discountAmount || 0,
-        totalAmount: data.totalAmount,
-        paidAmount: data.paidAmount || 0,
+        date: saleDate,
+        subtotal,
+        discountAmount,
+        totalAmount,
+        paidAmount,
         balanceImpact,
         profit: totalProfit,
-        paymentType: data.paymentType,
+        paymentType,
         paymentMethod: data.paymentMethod,
         cashRegisterSessionId: activeSession?.id || null,
         notes: data.notes || null,
@@ -1313,7 +1330,7 @@ export async function registerRoutes(
           salePrice: detail.unitPrice,
           saleId: sale.id,
           customerId: data.customerId || null,
-          soldAt: new Date(),
+          soldAt: saleDate,
         });
       }
 
@@ -1793,6 +1810,7 @@ export async function registerRoutes(
   // Create purchase invoice with items
   const createPurchaseInvoiceSchema = z.object({
     supplierId: z.string(),
+    date: z.string().optional(),
     subtotal: z.number(),
     discountAmount: z.number().optional(),
     totalAmount: z.number(),
@@ -1816,22 +1834,37 @@ export async function registerRoutes(
         return res.status(400).json({ error: "No open cash register session. Please open a session first." });
       }
       
+      const invoiceDate = data.date ? new Date(data.date) : new Date();
+      const discountAmount = data.discountAmount ?? 0;
+      const subtotal = data.subtotal;
+      if (discountAmount > subtotal) {
+        return res.status(400).json({ error: "Discount cannot exceed subtotal" });
+      }
+      const totalAmount = Math.max(0, subtotal - discountAmount);
+      const paidAmount = data.paidAmount ?? 0;
+      if (paidAmount > totalAmount) {
+        return res.status(400).json({ error: "Paid amount cannot exceed total" });
+      }
+      const paymentType =
+        paidAmount >= totalAmount ? "full" : paidAmount > 0 ? "partial" : "credit";
+
       // Generate invoice number
       const invoices = await storage.getPurchaseInvoices();
       const invoiceNumber = `PI${String(invoices.length + 1).padStart(6, "0")}`;
       
-      const balanceImpact = data.totalAmount - (data.paidAmount || 0);
+      const balanceImpact = Math.max(0, totalAmount - paidAmount);
 
       // Create the invoice
       const invoice = await storage.createPurchaseInvoice({
         invoiceNumber,
         supplierId: data.supplierId,
-        subtotal: data.subtotal,
-        discountAmount: data.discountAmount || 0,
-        totalAmount: data.totalAmount,
-        paidAmount: data.paidAmount || 0,
+        date: invoiceDate,
+        subtotal,
+        discountAmount,
+        totalAmount,
+        paidAmount,
         balanceImpact,
-        paymentType: data.paymentType,
+        paymentType,
         notes: data.notes || null,
         cashRegisterSessionId: activeSession.id,
       });
@@ -1853,7 +1886,7 @@ export async function registerRoutes(
               purchasePrice: itemData.unitPrice,
               purchaseInvoiceId: invoice.id,
               supplierId: data.supplierId,
-              purchasedAt: new Date(),
+              purchasedAt: invoiceDate,
               archived: false,
               salePrice: null,
               saleId: null,
@@ -1867,7 +1900,7 @@ export async function registerRoutes(
               purchasePrice: itemData.unitPrice,
               purchaseInvoiceId: invoice.id,
               supplierId: data.supplierId,
-              purchasedAt: new Date(),
+              purchasedAt: invoiceDate,
             });
 
         // Create the invoice item

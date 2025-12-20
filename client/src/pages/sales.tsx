@@ -748,35 +748,37 @@ export default function Sales() {
                   No items. Add at least one item.
                 </p>
               ) : (
-                <div className="space-y-2">
-                  {editItems.map((item) => (
-                    <div key={item.itemId} className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium truncate">{item.productName}</p>
-                        <p className="text-xs text-muted-foreground font-mono">{item.imei}</p>
-                        <p className="text-xs text-muted-foreground">
-                          Cost: {formatCurrency(item.purchasePrice)}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div className="w-28">
-                          <CurrencyInput
-                            value={item.unitPrice}
-                            onChange={(v) => handleUpdateItemPrice(item.itemId, v)}
-                          />
+                <ScrollArea className="max-h-[260px] pr-2">
+                  <div className="space-y-2">
+                    {editItems.map((item) => (
+                      <div key={item.itemId} className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium truncate">{item.productName}</p>
+                          <p className="text-xs text-muted-foreground font-mono">{item.imei}</p>
+                          <p className="text-xs text-muted-foreground">
+                            Cost: {formatCurrency(item.purchasePrice)}
+                          </p>
                         </div>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleRemoveItem(item.itemId)}
-                          data-testid={`button-remove-item-${item.itemId}`}
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
+                        <div className="flex items-center gap-2">
+                          <div className="w-28">
+                            <CurrencyInput
+                              value={item.unitPrice}
+                              onChange={(v) => handleUpdateItemPrice(item.itemId, v)}
+                            />
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleRemoveItem(item.itemId)}
+                            data-testid={`button-remove-item-${item.itemId}`}
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                </ScrollArea>
               )}
             </div>
 
