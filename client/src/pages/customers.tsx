@@ -282,19 +282,17 @@ export default function Customers() {
         const isPositive = balance > 0;
         return (
           <div className="text-right">
-            <span className={`font-mono text-sm font-medium ${
-              isPositive ? "text-emerald-600 dark:text-emerald-400" : balance < 0 ? "text-red-600 dark:text-red-400" : ""
-            }`}>
+            <span className={`font-mono text-sm font-medium ${isPositive ? "text-emerald-600 dark:text-emerald-400" : balance < 0 ? "text-red-600 dark:text-red-400" : ""
+              }`}>
               {formatCurrency(Math.abs(balance))}
             </span>
             {balance !== 0 && (
-              <Badge 
-                variant="secondary" 
-                className={`ml-2 text-xs ${
-                  isPositive 
-                    ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" 
+              <Badge
+                variant="secondary"
+                className={`ml-2 text-xs ${isPositive
+                    ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
                     : "bg-red-500/10 text-red-600 dark:text-red-400"
-                }`}
+                  }`}
               >
                 {isPositive ? "Owes" : "Credit"}
               </Badge>
@@ -329,7 +327,7 @@ export default function Customers() {
               Edit
             </DropdownMenuItem>
             {canDelete && (
-              <DropdownMenuItem 
+              <DropdownMenuItem
                 onClick={() => deleteMutation.mutate(customer.id)}
                 className="text-destructive"
               >
@@ -398,7 +396,9 @@ export default function Customers() {
         emptyMessage="No customers found"
         emptyDescription="Get started by adding your first customer."
         getRowKey={(c) => c.id}
+        pageSize={10}
       />
+
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="sm:max-w-md">
@@ -481,8 +481,8 @@ export default function Customers() {
                 <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
                   Cancel
                 </Button>
-                <Button 
-                  type="submit" 
+                <Button
+                  type="submit"
                   disabled={createMutation.isPending || updateMutation.isPending}
                   data-testid="button-save-customer"
                 >

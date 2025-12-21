@@ -314,7 +314,7 @@ export default function Products() {
               Edit
             </DropdownMenuItem>
             {canDelete && (
-              <DropdownMenuItem 
+              <DropdownMenuItem
                 onClick={() => deleteMutation.mutate(product.id)}
                 className="text-destructive"
                 data-testid={`button-delete-${product.id}`}
@@ -382,7 +382,9 @@ export default function Products() {
         emptyMessage="No products found"
         emptyDescription="Get started by adding your first product."
         getRowKey={(p) => p.id}
+        pageSize={10}
       />
+
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="sm:max-w-md">
@@ -517,8 +519,8 @@ export default function Products() {
                 <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
                   Cancel
                 </Button>
-                <Button 
-                  type="submit" 
+                <Button
+                  type="submit"
                   disabled={createMutation.isPending || updateMutation.isPending}
                   data-testid="button-save-product"
                 >

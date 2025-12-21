@@ -158,7 +158,7 @@ export default function CustomerDetails() {
               { key: "runningBalance", header: "Balance", format: (v) => (v / 100).toFixed(2) },
             ]}
           />
-          <Badge 
+          <Badge
             variant={(customer.balance || 0) > 0 ? "destructive" : "secondary"}
             className="text-base px-3 py-1"
           >
@@ -285,6 +285,11 @@ export default function CustomerDetails() {
                                 </div>
                                 <div className="flex items-center gap-4 flex-wrap">
                                   <span className="font-mono">{formatCurrency(sale.totalAmount)}</span>
+                                  {(sale.paidAmount || 0) > 0 && balance > 0 && (
+                                    <Badge variant="secondary" className="text-emerald-600">
+                                      Paid: {formatCurrency(sale.paidAmount || 0)}
+                                    </Badge>
+                                  )}
                                   {balance > 0 ? (
                                     <Badge variant="secondary" className="text-amber-600">
                                       Due: {formatCurrency(balance)}
@@ -374,11 +379,10 @@ export default function CustomerDetails() {
                             <TableCell className="font-mono text-sm">
                               {payment.reference || "-"}
                             </TableCell>
-                            <TableCell className={`text-right font-mono ${
-                              isRefund 
+                            <TableCell className={`text-right font-mono ${isRefund
                                 ? "text-emerald-600 dark:text-emerald-400"
                                 : "text-red-600 dark:text-red-400"
-                            }`}>
+                              }`}>
                               {isRefund ? "+" : "-"}{formatCurrency(amount)}
                             </TableCell>
                             <TableCell className="text-muted-foreground text-sm max-w-[200px] truncate">

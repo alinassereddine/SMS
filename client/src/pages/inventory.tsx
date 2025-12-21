@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Barcode } from "lucide-react";
+import { Barcode, Package, DollarSign } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { ExportButton } from "@/components/export-button";
 import { DataTable, Column } from "@/components/data-table";
 import { SearchInput } from "@/components/search-input";
 import { StatusBadge } from "@/components/status-badge";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Select,
   SelectContent,
@@ -16,6 +17,7 @@ import {
 import { formatCurrency, formatDate } from "@/lib/utils";
 import type { ItemWithProduct } from "@shared/schema";
 
+
 export default function Inventory() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -25,7 +27,7 @@ export default function Inventory() {
   });
 
   const filteredItems = items.filter((item) => {
-    const matchesSearch = 
+    const matchesSearch =
       item.imei.toLowerCase().includes(search.toLowerCase()) ||
       item.product?.name.toLowerCase().includes(search.toLowerCase());
     const matchesStatus = statusFilter === "all" || item.status === statusFilter;
@@ -78,13 +80,15 @@ export default function Inventory() {
     },
   ];
 
-  const availableCount = items.filter(i => i.status === "available").length;
+  const availableItems = items.filter(i => i.status === "available");
+  const availableCount = availableItems.length;
+  const availableValue = availableItems.reduce((sum, i) => sum + i.purchasePrice, 0);
   const soldCount = items.filter(i => i.status === "sold").length;
 
   return (
     <div className="space-y-6">
-      <PageHeader 
-        title="Inventory" 
+      <PageHeader
+        title="Inventory"
         description={`${availableCount} available, ${soldCount} sold. Items are managed through Purchases and Sales.`}
       >
         <ExportButton
@@ -99,6 +103,35 @@ export default function Inventory() {
           ]}
         />
       </PageHeader>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500/10">
+                <Package className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+              </div>
+              <div>
+                <div className="text-2xl font-bold" data-testid="text-available-count">{availableCount}</div>
+                <p className="text-xs text-muted-foreground">Available Items</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-500/10">
+                <DollarSign className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+              </div>
+              <div>
+                <div className="text-2xl font-bold font-mono" data-testid="text-available-value">{formatCurrency(availableValue)}</div>
+                <p className="text-xs text-muted-foreground">Total Stock Value</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
       <div className="flex flex-wrap items-center gap-4">
         <SearchInput
@@ -127,7 +160,9 @@ export default function Inventory() {
         emptyMessage="No items found"
         emptyDescription="Items are added through Purchase Invoices."
         getRowKey={(i) => i.id}
+        pageSize={10}
       />
+
     </div>
   );
 }

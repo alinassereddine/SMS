@@ -469,7 +469,7 @@ export default function Purchases() {
   };
 
   const updateItemEntry = (index: number, field: keyof ItemEntry, value: string | number) => {
-    setItemEntries(itemEntries.map((item, i) => 
+    setItemEntries(itemEntries.map((item, i) =>
       i === index ? { ...item, [field]: value } : item
     ));
   };
@@ -559,7 +559,7 @@ export default function Purchases() {
               Print
             </DropdownMenuItem>
             {canDelete && (
-              <DropdownMenuItem 
+              <DropdownMenuItem
                 onClick={() => setDeleteConfirmInvoice(invoice)}
                 className="text-destructive"
               >
@@ -680,7 +680,9 @@ export default function Purchases() {
         emptyMessage="No purchase invoices found"
         emptyDescription="Create your first purchase invoice."
         getRowKey={(i) => i.id}
+        pageSize={10}
       />
+
 
       <Dialog open={isDialogOpen} onOpenChange={handleNewPurchaseDialogChange}>
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">

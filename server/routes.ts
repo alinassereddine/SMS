@@ -277,28 +277,28 @@ export async function registerRoutes(
 
             const item = existingItem
               ? await storage.updateItem(existingItem.id, {
-                  productId: itemData.productId,
-                  imei: itemData.imei,
-                  status: "available",
-                  purchasePrice: itemData.unitPrice,
-                  purchaseInvoiceId: invoice.id,
-                  supplierId: supplier.id,
-                  purchasedAt: date,
-                  archived: false,
-                  salePrice: null,
-                  saleId: null,
-                  customerId: null,
-                  soldAt: null,
-                })
+                productId: itemData.productId,
+                imei: itemData.imei,
+                status: "available",
+                purchasePrice: itemData.unitPrice,
+                purchaseInvoiceId: invoice.id,
+                supplierId: supplier.id,
+                purchasedAt: date,
+                archived: false,
+                salePrice: null,
+                saleId: null,
+                customerId: null,
+                soldAt: null,
+              })
               : await storage.createItem({
-                  productId: itemData.productId,
-                  imei: itemData.imei,
-                  status: "available",
-                  purchasePrice: itemData.unitPrice,
-                  purchaseInvoiceId: invoice.id,
-                  supplierId: supplier.id,
-                  purchasedAt: date,
-                });
+                productId: itemData.productId,
+                imei: itemData.imei,
+                status: "available",
+                purchasePrice: itemData.unitPrice,
+                purchaseInvoiceId: invoice.id,
+                supplierId: supplier.id,
+                purchasedAt: date,
+              });
 
             await storage.createPurchaseInvoiceItem({
               invoiceId: invoice.id,
@@ -624,13 +624,13 @@ export async function registerRoutes(
     try {
       const { status, productId } = req.query;
       let items = await storage.getItems();
-      
+
       if (status === "available") {
         items = items.filter(i => i.status === "available");
       } else if (status) {
         items = items.filter(i => i.status === status);
       }
-      
+
       if (productId) {
         items = items.filter(i => i.productId === productId);
       }
@@ -638,7 +638,7 @@ export async function registerRoutes(
       // Enrich with product data
       const products = await storage.getProducts();
       const productMap = new Map(products.map(p => [p.id, p]));
-      
+
       const enrichedItems = items.map(item => ({
         ...item,
         product: productMap.get(item.productId),
@@ -654,7 +654,7 @@ export async function registerRoutes(
     try {
       const item = await storage.getItem(req.params.id);
       if (!item) return res.status(404).json({ error: "Item not found" });
-      
+
       const product = await storage.getProduct(item.productId);
       res.json({ ...item, product });
     } catch (error) {
@@ -666,7 +666,7 @@ export async function registerRoutes(
     try {
       const item = await storage.getItemByImei(req.params.imei);
       if (!item) return res.status(404).json({ error: "Item not found" });
-      
+
       const product = await storage.getProduct(item.productId);
       res.json({ ...item, product });
     } catch (error) {
@@ -677,7 +677,7 @@ export async function registerRoutes(
   app.post("/api/items", requirePermission("inventory:write"), async (req, res) => {
     try {
       const data = insertItemSchema.parse(req.body);
-      
+
       // Check for duplicate IMEI
       const existing = await storage.getItemByImei(data.imei);
       if (existing && (!existing.archived || existing.status === "sold")) {
@@ -875,7 +875,7 @@ export async function registerRoutes(
       // Get sale items for each sale
       const allItems = await storage.getItems();
       const allProducts = await storage.getProducts();
-      
+
       const salesWithItems = await Promise.all(customerSales.map(async (sale) => {
         const saleItems = await storage.getSaleItems(sale.id);
         const items = saleItems.map(si => {
@@ -892,7 +892,7 @@ export async function registerRoutes(
 
       // Get all payments for this customer
       const payments = await storage.getPaymentsByEntity("customer", req.params.id);
-      const sortedPayments = payments.sort((a, b) => 
+      const sortedPayments = payments.sort((a, b) =>
         new Date(b.date).getTime() - new Date(a.date).getTime()
       );
 
@@ -911,31 +911,20 @@ export async function registerRoutes(
 
       const ledgerEntries: Omit<LedgerEntry, "runningBalance">[] = [];
 
-      // Add sales as debits (customer owes the unpaid portion)
+      // Add sales - show total amount as debit and down payment as credit on the SAME entry
       for (const sale of customerSales) {
-        const unpaidAmount = sale.totalAmount - (sale.paidAmount || 0);
-        if (unpaidAmount > 0) {
-          ledgerEntries.push({
-            id: `sale-${sale.id}`,
-            date: String(sale.date),
-            type: "sale",
-            description: `Sale ${sale.saleNumber}`,
-            debit: unpaidAmount,
-            credit: 0,
-            referenceId: sale.id,
-          });
-        } else if (sale.totalAmount > 0 && (sale.paidAmount || 0) >= sale.totalAmount) {
-          // Include fully-paid sales in the ledger without affecting running balance.
-          ledgerEntries.push({
-            id: `sale-${sale.id}`,
-            date: String(sale.date),
-            type: "sale",
-            description: `Sale ${sale.saleNumber} (Paid)`,
-            debit: sale.totalAmount,
-            credit: sale.totalAmount,
-            referenceId: sale.id,
-          });
-        }
+        const paidAmount = sale.paidAmount || 0;
+
+        // Show the sale with total amount as debit and paid amount as credit in the same row
+        ledgerEntries.push({
+          id: `sale-${sale.id}`,
+          date: String(sale.date),
+          type: "sale",
+          description: `Sale ${sale.saleNumber}`,
+          debit: sale.totalAmount,
+          credit: paidAmount,
+          referenceId: sale.id,
+        });
       }
 
       // Add payments/refunds (payments reduce balance, refunds increase balance)
@@ -947,7 +936,7 @@ export async function registerRoutes(
           id: `payment-${payment.id}`,
           date: String(payment.date),
           type: "payment",
-          transactionType: payment.transactionType,
+          transactionType: payment.transactionType as "payment" | "refund",
           description: `${typeLabel} - ${payment.paymentMethod}${payment.reference ? ` (${payment.reference})` : ""}`,
           // Payment reduces balance, refund increases balance.
           debit: isRefund ? amount : 0,
@@ -1132,7 +1121,7 @@ export async function registerRoutes(
       // Get purchase items for each purchase
       const allItems = await storage.getItems();
       const allProducts = await storage.getProducts();
-      
+
       const purchasesWithItems = await Promise.all(supplierPurchases.map(async (purchase) => {
         const purchaseItems = await storage.getPurchaseInvoiceItems(purchase.id);
         const items = purchaseItems.map(pi => {
@@ -1149,7 +1138,7 @@ export async function registerRoutes(
 
       // Get all payments for this supplier
       const payments = await storage.getPaymentsByEntity("supplier", req.params.id);
-      const sortedPayments = payments.sort((a, b) => 
+      const sortedPayments = payments.sort((a, b) =>
         new Date(b.date).getTime() - new Date(a.date).getTime()
       );
 
@@ -1243,16 +1232,16 @@ export async function registerRoutes(
   app.get("/api/sales", async (req, res) => {
     try {
       const sales = await storage.getSales();
-      
+
       // Enrich with customer data
       const customers = await storage.getCustomers();
       const customerMap = new Map(customers.map(c => [c.id, c]));
-      
+
       const enrichedSales = await Promise.all(sales.map(async sale => {
         const saleItems = await storage.getSaleItems(sale.id);
         const products = await storage.getProducts();
         const productMap = new Map(products.map(p => [p.id, p]));
-        
+
         return {
           ...sale,
           customer: sale.customerId ? customerMap.get(sale.customerId) : null,
@@ -1273,12 +1262,12 @@ export async function registerRoutes(
     try {
       const sale = await storage.getSale(req.params.id);
       if (!sale) return res.status(404).json({ error: "Sale not found" });
-      
+
       const customer = sale.customerId ? await storage.getCustomer(sale.customerId) : null;
       const saleItems = await storage.getSaleItems(sale.id);
       const products = await storage.getProducts();
       const productMap = new Map(products.map(p => [p.id, p]));
-      
+
       res.json({
         ...sale,
         customer,
@@ -1312,13 +1301,13 @@ export async function registerRoutes(
   app.post("/api/sales", requirePermission("sales:write"), async (req, res) => {
     try {
       const data = createSaleSchema.parse(req.body);
-      
+
       // Check for active cash register session
       const activeSession = await storage.getActiveCashRegisterSession();
       if (!activeSession) {
         return res.status(400).json({ error: "No open cash register session. Please open a session first." });
       }
-      
+
       const saleDate = parseDateInput(data.date) ?? new Date();
       const discountAmount = data.discountAmount ?? 0;
       const subtotal = data.subtotal;
@@ -1336,17 +1325,17 @@ export async function registerRoutes(
       // Generate sale number
       const sales = await storage.getSales();
       const saleNumber = `S${String(sales.length + 1).padStart(6, "0")}`;
-      
+
       // Calculate totals and profit
       let totalProfit = 0;
       const itemDetails = await Promise.all(data.items.map(async saleItem => {
         const item = await storage.getItem(saleItem.itemId);
         if (!item) throw new Error(`Item not found: ${saleItem.itemId}`);
         if (item.status !== "available") throw new Error(`Item not available: ${item.imei}`);
-        
+
         const profit = saleItem.unitPrice - item.purchasePrice;
         totalProfit += profit;
-        
+
         return {
           item,
           unitPrice: saleItem.unitPrice,
@@ -1427,8 +1416,8 @@ export async function registerRoutes(
       if (sale.cashRegisterSessionId) {
         const session = await storage.getCashRegisterSession(sale.cashRegisterSessionId);
         if (session && session.status === "closed") {
-          return res.status(400).json({ 
-            error: "Cannot delete: Sale is linked to a closed cash register session" 
+          return res.status(400).json({
+            error: "Cannot delete: Sale is linked to a closed cash register session"
           });
         }
       }
@@ -1436,8 +1425,8 @@ export async function registerRoutes(
       if (sale.customerId && sale.balanceImpact > 0) {
         const customer = await storage.getCustomer(sale.customerId);
         if (customer && (customer.balance || 0) < sale.balanceImpact) {
-          return res.status(400).json({ 
-            error: "Cannot delete: Customer has made payments against this sale. The remaining balance is less than the original amount owed." 
+          return res.status(400).json({
+            error: "Cannot delete: Customer has made payments against this sale. The remaining balance is less than the original amount owed."
           });
         }
       }
@@ -1554,14 +1543,14 @@ export async function registerRoutes(
       if (sale.cashRegisterSessionId) {
         const session = await storage.getCashRegisterSession(sale.cashRegisterSessionId);
         if (session && session.status === "closed") {
-          return res.status(400).json({ 
-            error: "Cannot edit: Sale is linked to a closed cash register session" 
+          return res.status(400).json({
+            error: "Cannot edit: Sale is linked to a closed cash register session"
           });
         }
       }
 
       const data = updateSaleSchema.parse(req.body);
-      
+
       // Recalculate totals if discount changed
       let updateData: Record<string, unknown> = { ...data };
       if (data.discountAmount !== undefined && data.discountAmount !== sale.discountAmount) {
@@ -1569,11 +1558,11 @@ export async function registerRoutes(
         if (data.discountAmount > sale.subtotal) {
           return res.status(400).json({ error: "Discount cannot exceed subtotal" });
         }
-        
+
         const newTotal = sale.subtotal - data.discountAmount;
         const paidAmount = sale.paidAmount || 0;
         const newBalanceImpact = Math.max(0, newTotal - paidAmount);
-        
+
         // Recalculate payment type
         let newPaymentType = "credit";
         if (paidAmount >= newTotal) {
@@ -1581,7 +1570,7 @@ export async function registerRoutes(
         } else if (paidAmount > 0) {
           newPaymentType = "partial";
         }
-        
+
         // If balance changed and customer exists, update customer balance
         if (sale.customerId && newBalanceImpact !== sale.balanceImpact) {
           const customer = await storage.getCustomer(sale.customerId);
@@ -1592,11 +1581,11 @@ export async function registerRoutes(
             });
           }
         }
-        
+
         // Ensure profit doesn't go negative
         const profitReduction = data.discountAmount - (sale.discountAmount || 0);
         const newProfit = Math.max(0, sale.profit - profitReduction);
-        
+
         updateData.totalAmount = newTotal;
         updateData.balanceImpact = newBalanceImpact;
         updateData.paymentType = newPaymentType;
@@ -1624,25 +1613,25 @@ export async function registerRoutes(
       if (sale.cashRegisterSessionId) {
         const session = await storage.getCashRegisterSession(sale.cashRegisterSessionId);
         if (session && session.status === "closed") {
-          return res.status(400).json({ 
-            error: "Cannot edit: Sale is linked to a closed cash register session" 
+          return res.status(400).json({
+            error: "Cannot edit: Sale is linked to a closed cash register session"
           });
         }
       }
 
       // Validate input
       const data = updateSaleFullSchema.parse(req.body);
-      
+
       // Get current sale items
       const currentSaleItems = await storage.getSaleItems(sale.id);
       const currentItemIds = new Set(currentSaleItems.map(si => si.itemId));
       const newItemIds = new Set(data.items.map(i => i.itemId));
-      
+
       // Determine items to remove and add
       const itemsToRemove = currentSaleItems.filter(si => !newItemIds.has(si.itemId));
       const itemsToAdd = data.items.filter(i => !currentItemIds.has(i.itemId));
       const itemsToUpdate = data.items.filter(i => currentItemIds.has(i.itemId));
-      
+
       // Validate all new items are available
       for (const itemToAdd of itemsToAdd) {
         const item = await storage.getItem(itemToAdd.itemId);
@@ -1650,20 +1639,20 @@ export async function registerRoutes(
           return res.status(400).json({ error: `Item ${itemToAdd.itemId} not found` });
         }
         if (item.status !== "available") {
-          return res.status(400).json({ 
-            error: `Item with IMEI ${item.imei} is not available (status: ${item.status})` 
+          return res.status(400).json({
+            error: `Item with IMEI ${item.imei} is not available (status: ${item.status})`
           });
         }
       }
-      
+
       // Check customer requirement for credit/partial payments
       const discountAmount = data.discountAmount ?? sale.discountAmount ?? 0;
-      
+
       // Calculate new subtotal and totals from items
       let newSubtotal = 0;
       let newProfit = 0;
       const itemDataMap = new Map(data.items.map(i => [i.itemId, i]));
-      
+
       // Process all items (both existing and new)
       for (const itemData of data.items) {
         const item = await storage.getItem(itemData.itemId);
@@ -1673,29 +1662,29 @@ export async function registerRoutes(
         newSubtotal += itemData.unitPrice;
         newProfit += itemData.unitPrice - item.purchasePrice;
       }
-      
+
       // Validate discount
       if (discountAmount > newSubtotal) {
         return res.status(400).json({ error: "Discount cannot exceed subtotal" });
       }
-      
+
       const newTotal = newSubtotal - discountAmount;
       const newPaidAmount = data.paidAmount ?? sale.paidAmount ?? 0;
-      
+
       // Validate paid amount
       if (newPaidAmount > newTotal) {
         return res.status(400).json({ error: "Paid amount cannot exceed total" });
       }
-      
+
       const newBalanceImpact = Math.max(0, newTotal - newPaidAmount);
-      
+
       // Check customer requirement for credit/partial
       if (newBalanceImpact > 0 && !data.customerId && !sale.customerId) {
-        return res.status(400).json({ 
-          error: "Customer is required for partial/credit sales" 
+        return res.status(400).json({
+          error: "Customer is required for partial/credit sales"
         });
       }
-      
+
       // Determine payment type
       let newPaymentType = "credit";
       if (newPaidAmount >= newTotal) {
@@ -1703,12 +1692,12 @@ export async function registerRoutes(
       } else if (newPaidAmount > 0) {
         newPaymentType = "partial";
       }
-      
+
       // Ensure profit is not negative
       newProfit = Math.max(0, newProfit);
-      
+
       // ---- Begin updates ----
-      
+
       // 1. Release removed items (set status back to available)
       for (const saleItem of itemsToRemove) {
         await storage.updateItem(saleItem.itemId, {
@@ -1719,7 +1708,7 @@ export async function registerRoutes(
           soldAt: null,
         });
       }
-      
+
       // 2. Mark new items as sold
       const customerId = data.customerId !== undefined ? data.customerId : sale.customerId;
       for (const itemToAdd of itemsToAdd) {
@@ -1734,7 +1723,7 @@ export async function registerRoutes(
           });
         }
       }
-      
+
       // 3. Update prices on existing items
       for (const itemData of itemsToUpdate) {
         const item = await storage.getItem(itemData.itemId);
@@ -1744,10 +1733,10 @@ export async function registerRoutes(
           });
         }
       }
-      
+
       // 4. Delete old sale items and create new ones
       await storage.deleteSaleItems(sale.id);
-      
+
       for (const itemData of data.items) {
         const item = await storage.getItem(itemData.itemId);
         if (item) {
@@ -1765,11 +1754,11 @@ export async function registerRoutes(
           });
         }
       }
-      
+
       // 5. Update customer balance
       const oldCustomerId = sale.customerId;
       const newCustomerId = data.customerId !== undefined ? data.customerId : sale.customerId;
-      
+
       // Remove balance from old customer if exists
       if (oldCustomerId && sale.balanceImpact > 0) {
         const oldCustomer = await storage.getCustomer(oldCustomerId);
@@ -1779,7 +1768,7 @@ export async function registerRoutes(
           });
         }
       }
-      
+
       // Add balance to new customer if exists
       if (newCustomerId && newBalanceImpact > 0) {
         const newCustomer = await storage.getCustomer(newCustomerId);
@@ -1789,7 +1778,7 @@ export async function registerRoutes(
           });
         }
       }
-      
+
       // 6. Update sale record
       const updatedSale = await storage.updateSale(sale.id, {
         customerId: newCustomerId,
@@ -1804,7 +1793,7 @@ export async function registerRoutes(
         paymentMethod: data.paymentMethod ?? sale.paymentMethod,
         notes: data.notes !== undefined ? data.notes : sale.notes,
       });
-      
+
       // Return updated sale with items
       const newSaleItems = await storage.getSaleItems(sale.id);
       res.json({ ...updatedSale, items: newSaleItems });
@@ -1821,16 +1810,16 @@ export async function registerRoutes(
   app.get("/api/purchase-invoices", async (req, res) => {
     try {
       const invoices = await storage.getPurchaseInvoices();
-      
+
       // Enrich with supplier data
       const suppliers = await storage.getSuppliers();
       const supplierMap = new Map(suppliers.map(s => [s.id, s]));
-      
+
       const enrichedInvoices = await Promise.all(invoices.map(async invoice => {
         const invoiceItems = await storage.getPurchaseInvoiceItems(invoice.id);
         const products = await storage.getProducts();
         const productMap = new Map(products.map(p => [p.id, p]));
-        
+
         return {
           ...invoice,
           supplier: supplierMap.get(invoice.supplierId),
@@ -1851,12 +1840,12 @@ export async function registerRoutes(
     try {
       const invoice = await storage.getPurchaseInvoice(req.params.id);
       if (!invoice) return res.status(404).json({ error: "Invoice not found" });
-      
+
       const supplier = await storage.getSupplier(invoice.supplierId);
       const invoiceItems = await storage.getPurchaseInvoiceItems(invoice.id);
       const products = await storage.getProducts();
       const productMap = new Map(products.map(p => [p.id, p]));
-      
+
       res.json({
         ...invoice,
         supplier,
@@ -1890,13 +1879,13 @@ export async function registerRoutes(
   app.post("/api/purchase-invoices", requirePermission("purchases:write"), async (req, res) => {
     try {
       const data = createPurchaseInvoiceSchema.parse(req.body);
-      
+
       // Check for active cash register session
       const activeSession = await storage.getActiveCashRegisterSession();
       if (!activeSession) {
         return res.status(400).json({ error: "No open cash register session. Please open a session first." });
       }
-      
+
       const invoiceDate = parseDateInput(data.date) ?? new Date();
       const discountAmount = data.discountAmount ?? 0;
       const subtotal = data.subtotal;
@@ -1914,7 +1903,7 @@ export async function registerRoutes(
       // Generate invoice number
       const invoices = await storage.getPurchaseInvoices();
       const invoiceNumber = `PI${String(invoices.length + 1).padStart(6, "0")}`;
-      
+
       const balanceImpact = Math.max(0, totalAmount - paidAmount);
 
       // Create the invoice
@@ -1943,28 +1932,28 @@ export async function registerRoutes(
         // Create the inventory item
         const item = existingItem
           ? await storage.updateItem(existingItem.id, {
-              productId: itemData.productId,
-              imei: itemData.imei,
-              status: "available",
-              purchasePrice: itemData.unitPrice,
-              purchaseInvoiceId: invoice.id,
-              supplierId: data.supplierId,
-              purchasedAt: invoiceDate,
-              archived: false,
-              salePrice: null,
-              saleId: null,
-              customerId: null,
-              soldAt: null,
-            })
+            productId: itemData.productId,
+            imei: itemData.imei,
+            status: "available",
+            purchasePrice: itemData.unitPrice,
+            purchaseInvoiceId: invoice.id,
+            supplierId: data.supplierId,
+            purchasedAt: invoiceDate,
+            archived: false,
+            salePrice: null,
+            saleId: null,
+            customerId: null,
+            soldAt: null,
+          })
           : await storage.createItem({
-              productId: itemData.productId,
-              imei: itemData.imei,
-              status: "available",
-              purchasePrice: itemData.unitPrice,
-              purchaseInvoiceId: invoice.id,
-              supplierId: data.supplierId,
-              purchasedAt: invoiceDate,
-            });
+            productId: itemData.productId,
+            imei: itemData.imei,
+            status: "available",
+            purchasePrice: itemData.unitPrice,
+            purchaseInvoiceId: invoice.id,
+            supplierId: data.supplierId,
+            purchasedAt: invoiceDate,
+          });
 
         // Create the invoice item
         await storage.createPurchaseInvoiceItem({
@@ -2019,8 +2008,8 @@ export async function registerRoutes(
         if (invoiceItem.itemId) {
           const item = await storage.getItem(invoiceItem.itemId);
           if (item && item.status === "sold") {
-            return res.status(400).json({ 
-              error: `Cannot delete: Item ${item.imei} has been sold` 
+            return res.status(400).json({
+              error: `Cannot delete: Item ${item.imei} has been sold`
             });
           }
         }
@@ -2029,8 +2018,8 @@ export async function registerRoutes(
       if (invoice.balanceImpact > 0) {
         const supplier = await storage.getSupplier(invoice.supplierId);
         if (supplier && (supplier.balance || 0) < invoice.balanceImpact) {
-          return res.status(400).json({ 
-            error: "Cannot delete: Payments have been made against this purchase. The remaining balance is less than the original amount owed." 
+          return res.status(400).json({
+            error: "Cannot delete: Payments have been made against this purchase. The remaining balance is less than the original amount owed."
           });
         }
       }
@@ -2141,7 +2130,7 @@ export async function registerRoutes(
       if (!invoice) return res.status(404).json({ error: "Purchase invoice not found" });
 
       const data = updatePurchaseInvoiceSchema.parse(req.body);
-      
+
       // Recalculate totals if discount changed
       let updateData: Record<string, unknown> = { ...data };
       if (data.discountAmount !== undefined && data.discountAmount !== invoice.discountAmount) {
@@ -2149,11 +2138,11 @@ export async function registerRoutes(
         if (data.discountAmount > invoice.subtotal) {
           return res.status(400).json({ error: "Discount cannot exceed subtotal" });
         }
-        
+
         const newTotal = invoice.subtotal - data.discountAmount;
         const paidAmount = invoice.paidAmount || 0;
         const newBalanceImpact = Math.max(0, newTotal - paidAmount);
-        
+
         // Recalculate payment type
         let newPaymentType = "credit";
         if (paidAmount >= newTotal) {
@@ -2161,7 +2150,7 @@ export async function registerRoutes(
         } else if (paidAmount > 0) {
           newPaymentType = "partial";
         }
-        
+
         // If balance changed and supplier exists, update supplier balance
         if (newBalanceImpact !== invoice.balanceImpact) {
           const supplier = await storage.getSupplier(invoice.supplierId);
@@ -2172,7 +2161,7 @@ export async function registerRoutes(
             });
           }
         }
-        
+
         updateData.totalAmount = newTotal;
         updateData.balanceImpact = newBalanceImpact;
         updateData.paymentType = newPaymentType;
@@ -2211,15 +2200,15 @@ export async function registerRoutes(
       if (!invoice) return res.status(404).json({ error: "Purchase invoice not found" });
 
       const data = updatePurchaseInvoiceFullSchema.parse(req.body);
-      
+
       // Get current invoice items
       const currentInvoiceItems = await storage.getPurchaseInvoiceItems(invoice.id);
       const currentItemIds = new Set(currentInvoiceItems.map(ii => ii.itemId).filter(Boolean));
       const newItemIds = new Set(data.items.filter(i => i.itemId).map(i => i.itemId));
-      
+
       // Items to remove (existing items not in new list)
       const itemsToRemove = currentInvoiceItems.filter(ii => ii.itemId && !newItemIds.has(ii.itemId));
-      
+
       // Check if any items to be removed have been sold
       for (const invoiceItem of itemsToRemove) {
         if (invoiceItem.itemId) {
@@ -2231,14 +2220,14 @@ export async function registerRoutes(
           }
         }
       }
-      
+
       // Check for duplicate IMEIs in the new items
       const imeis = data.items.map(i => i.imei);
       const uniqueImeis = new Set(imeis);
       if (imeis.length !== uniqueImeis.size) {
         return res.status(400).json({ error: "Duplicate IMEIs are not allowed" });
       }
-      
+
       // Check IMEI uniqueness for new items (items without itemId)
       const newItems = data.items.filter(i => !i.itemId);
       for (const newItem of newItems) {
@@ -2249,24 +2238,24 @@ export async function registerRoutes(
           });
         }
       }
-      
+
       // Calculate new totals
       const discountAmount = data.discountAmount ?? invoice.discountAmount ?? 0;
       const newSubtotal = data.items.reduce((sum, i) => sum + i.unitPrice, 0);
-      
+
       if (discountAmount > newSubtotal) {
         return res.status(400).json({ error: "Discount cannot exceed subtotal" });
       }
-      
+
       const newTotal = newSubtotal - discountAmount;
       const newPaidAmount = data.paidAmount ?? invoice.paidAmount ?? 0;
-      
+
       if (newPaidAmount > newTotal) {
         return res.status(400).json({ error: "Paid amount cannot exceed total" });
       }
-      
+
       const newBalanceImpact = Math.max(0, newTotal - newPaidAmount);
-      
+
       // Determine payment type
       let newPaymentType = "credit";
       if (newPaidAmount >= newTotal) {
@@ -2274,9 +2263,9 @@ export async function registerRoutes(
       } else if (newPaidAmount > 0) {
         newPaymentType = "partial";
       }
-      
+
       // ---- Begin updates ----
-      
+
       // 1. Delete removed items from inventory
       for (const invoiceItem of itemsToRemove) {
         if (invoiceItem.itemId) {
@@ -2286,7 +2275,7 @@ export async function registerRoutes(
           }
         }
       }
-      
+
       // 2. Update existing items' costs and date if date changed
       const existingItems = data.items.filter(i => i.itemId);
       const newPurchaseDate = parseDateInput(data.date) ?? invoice.date;
@@ -2303,7 +2292,7 @@ export async function registerRoutes(
           }
         }
       }
-      
+
       // 3. Create new inventory items with correct date
       const createdItems: { tempId: number; itemId: string }[] = [];
       for (let i = 0; i < newItems.length; i++) {
@@ -2311,34 +2300,34 @@ export async function registerRoutes(
         const existingItem = await storage.getItemByImei(itemData.imei);
         const newItem = existingItem
           ? await storage.updateItem(existingItem.id, {
-              productId: itemData.productId,
-              imei: itemData.imei,
-              purchasePrice: itemData.unitPrice,
-              status: "available",
-              purchaseInvoiceId: invoice.id,
-              supplierId: data.supplierId,
-              purchasedAt: newPurchaseDate,
-              archived: false,
-              salePrice: null,
-              saleId: null,
-              customerId: null,
-              soldAt: null,
-            })
+            productId: itemData.productId,
+            imei: itemData.imei,
+            purchasePrice: itemData.unitPrice,
+            status: "available",
+            purchaseInvoiceId: invoice.id,
+            supplierId: data.supplierId,
+            purchasedAt: newPurchaseDate,
+            archived: false,
+            salePrice: null,
+            saleId: null,
+            customerId: null,
+            soldAt: null,
+          })
           : await storage.createItem({
-              productId: itemData.productId,
-              imei: itemData.imei,
-              purchasePrice: itemData.unitPrice,
-              status: "available",
-              purchaseInvoiceId: invoice.id,
-              supplierId: data.supplierId,
-              purchasedAt: newPurchaseDate,
-            });
+            productId: itemData.productId,
+            imei: itemData.imei,
+            purchasePrice: itemData.unitPrice,
+            status: "available",
+            purchaseInvoiceId: invoice.id,
+            supplierId: data.supplierId,
+            purchasedAt: newPurchaseDate,
+          });
         createdItems.push({ tempId: i, itemId: newItem.id });
       }
-      
+
       // 4. Delete old invoice items and create new ones
       await storage.deletePurchaseInvoiceItems(invoice.id);
-      
+
       for (const itemData of data.items) {
         let itemId = itemData.itemId;
         if (!itemId) {
@@ -2346,7 +2335,7 @@ export async function registerRoutes(
           const createdItem = await storage.getItemByImei(itemData.imei);
           itemId = createdItem?.id;
         }
-        
+
         if (itemId) {
           await storage.createPurchaseInvoiceItem({
             invoiceId: invoice.id,
@@ -2358,11 +2347,11 @@ export async function registerRoutes(
           });
         }
       }
-      
+
       // 5. Update supplier balances
       const oldSupplierId = invoice.supplierId;
       const newSupplierId = data.supplierId;
-      
+
       // Remove balance from old supplier
       if (invoice.balanceImpact > 0) {
         const oldSupplier = await storage.getSupplier(oldSupplierId);
@@ -2372,7 +2361,7 @@ export async function registerRoutes(
           });
         }
       }
-      
+
       // Add balance to new supplier
       if (newBalanceImpact > 0) {
         const newSupplier = await storage.getSupplier(newSupplierId);
@@ -2382,7 +2371,7 @@ export async function registerRoutes(
           });
         }
       }
-      
+
       // 6. Update items with new supplier if changed
       if (oldSupplierId !== newSupplierId) {
         for (const itemData of data.items) {
@@ -2392,7 +2381,7 @@ export async function registerRoutes(
           }
         }
       }
-      
+
       // 7. Update invoice record
       const updatedInvoice = await storage.updatePurchaseInvoice(invoice.id, {
         supplierId: newSupplierId,
@@ -2405,7 +2394,7 @@ export async function registerRoutes(
         paymentType: newPaymentType,
         notes: data.notes !== undefined ? data.notes : invoice.notes,
       });
-      
+
       // Return updated invoice with items
       const newInvoiceItems = await storage.getPurchaseInvoiceItems(invoice.id);
       res.json({ ...updatedInvoice, items: newInvoiceItems });
@@ -2422,16 +2411,16 @@ export async function registerRoutes(
   app.get("/api/payments", async (req, res) => {
     try {
       const payments = await storage.getPayments();
-      
+
       // Enrich with entity data
       const customers = await storage.getCustomers();
       const suppliers = await storage.getSuppliers();
       const customerMap = new Map(customers.map(c => [c.id, c]));
       const supplierMap = new Map(suppliers.map(s => [s.id, s]));
-      
+
       const enrichedPayments = payments.map(payment => ({
         ...payment,
-        entity: payment.type === "customer" 
+        entity: payment.type === "customer"
           ? customerMap.get(payment.entityId)
           : supplierMap.get(payment.entityId),
       }));
@@ -2445,15 +2434,15 @@ export async function registerRoutes(
   app.post("/api/payments", requirePermission("payments:write"), async (req, res) => {
     try {
       const data = insertPaymentSchema.parse(req.body);
-      
+
       // Get active cash register session
       const activeSession = await storage.getActiveCashRegisterSession();
-      
+
       // Determine balance impact based on transaction type
       // Payment: reduces balance (entity owes less)
       // Refund: increases balance (entity owes more / we owe less)
       const balanceChange = getPaymentBalanceDelta(data);
-      
+
       const payment = await storage.createPayment({
         ...data,
         cashRegisterSessionId: activeSession?.id || null,
@@ -2492,7 +2481,7 @@ export async function registerRoutes(
       if (!payment) return res.status(404).json({ error: "Payment not found" });
 
       const data = updatePaymentSchema.parse(req.body);
-      
+
       const updateData: any = {};
       if (data.date) {
         updateData.date = parseDateInput(data.date) ?? new Date(data.date);
@@ -2506,7 +2495,7 @@ export async function registerRoutes(
             transactionType: payment.transactionType,
           });
           const balanceChange = newDelta - oldDelta;
-           
+
           if (payment.type === "customer") {
             const customer = await storage.getCustomer(payment.entityId);
             if (customer) {
@@ -2653,7 +2642,7 @@ export async function registerRoutes(
         const ms = new Date(String(date)).getTime();
         return Number.isFinite(ms) && ms >= sessionStartMs && ms <= sessionEndMs;
       };
-       
+
       // Calculate expected balance in real-time
       const sales = await storage.getSales();
       const payments = await storage.getPayments();
@@ -2702,7 +2691,7 @@ export async function registerRoutes(
       const salesCash = sessionSales
         .filter(s => s.paymentMethod === "cash")
         .reduce((sum, s) => sum + (s.paidAmount ?? 0), 0);
-      
+
       const paymentsCash = sessionPayments
         .filter(p => p.paymentMethod === "cash")
         .reduce((sum, p) => {
@@ -2715,7 +2704,7 @@ export async function registerRoutes(
             return sum + (isRefund ? amount : -amount);
           }
         }, 0);
-      
+
       const expensesCash = sessionExpenses
         .filter(e => e.paymentMethod === "cash")
         .reduce((sum, e) => sum + e.amount, 0);
@@ -2725,17 +2714,17 @@ export async function registerRoutes(
 
       const expectedBalance =
         session.openingBalance + salesCash + paymentsCash - expensesCash - purchasesCash;
-      
+
       // Get only the entity names needed for this session's payments
       const customerIds = new Set(sessionPayments.filter(p => p.type === 'customer').map(p => p.entityId));
       const supplierIds = new Set([
         ...sessionPayments.filter(p => p.type === 'supplier').map(p => p.entityId),
         ...sessionPurchases.map((p) => p.supplierId),
       ]);
-      
+
       const customerMap = new Map<string, string>();
       const supplierMap = new Map<string, string>();
-      
+
       // Only fetch entities that are actually referenced
       if (customerIds.size > 0) {
         const customers = await storage.getCustomers();
@@ -2781,16 +2770,16 @@ export async function registerRoutes(
       }
 
       for (const payment of sessionPayments) {
-        const entityName = payment.type === 'customer' 
+        const entityName = payment.type === 'customer'
           ? customerMap.get(payment.entityId) || 'Unknown'
           : supplierMap.get(payment.entityId) || 'Unknown';
         const isRefund = payment.transactionType === 'refund';
         const typeLabel = isRefund ? 'Refund' : 'Payment';
-        const direction = payment.type === 'customer' 
+        const direction = payment.type === 'customer'
           ? (isRefund ? 'to' : 'from')
           : (isRefund ? 'from' : 'to');
         const amount = Math.abs(payment.amount);
-        
+
         // Calculate cash impact
         let cashAmount = 0;
         if (payment.paymentMethod === 'cash') {
@@ -2800,11 +2789,11 @@ export async function registerRoutes(
             cashAmount = isRefund ? amount : -amount;
           }
         }
-        
+
         transactions.push({
           id: payment.id,
           type: payment.type === "customer" ? 'payment' : 'supplier_payment',
-          transactionType: payment.transactionType,
+          transactionType: payment.transactionType as "payment" | "refund",
           description: `${typeLabel} ${direction} ${entityName}`,
           amount,
           cashAmount,
@@ -2844,13 +2833,16 @@ export async function registerRoutes(
 
       // Sort by date
       transactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-      
+
+      // Filter out transactions with $0 amount
+      const filteredTransactions = transactions.filter(tx => tx.amount !== 0);
+
       res.json({
         ...session,
         expectedBalance,
         transactionCount:
           sessionSales.length + sessionPayments.length + sessionPurchases.length + sessionExpenses.length,
-        transactions,
+        transactions: filteredTransactions,
         summary: {
           salesCount: sessionSales.length,
           paymentsCount: sessionPayments.length,
@@ -2958,7 +2950,7 @@ export async function registerRoutes(
       const salesCash = sessionSales
         .filter(s => s.paymentMethod === "cash")
         .reduce((sum, s) => sum + (s.paidAmount ?? 0), 0);
-      
+
       // Calculate payment cash flow correctly based on type and transaction type
       // Customer payment = money IN (+), Customer refund = money OUT (-)
       // Supplier payment = money OUT (-), Supplier refund = money IN (+)
@@ -2976,7 +2968,7 @@ export async function registerRoutes(
             return sum + (isRefund ? amount : -amount);
           }
         }, 0);
-      
+
       const expensesCash = sessionExpenses
         .filter(e => e.paymentMethod === "cash")
         .reduce((sum, e) => sum + e.amount, 0);
@@ -3010,7 +3002,7 @@ export async function registerRoutes(
       if (!session) return res.status(404).json({ error: "Session not found" });
 
       const data = updateCashRegisterSessionDateSchema.parse(req.body);
-      
+
       const updatedSession = await storage.updateCashRegisterSession(session.id, {
         openedAt: parseDateInput(data.openedAt) ?? new Date(data.openedAt),
       });
@@ -3037,15 +3029,15 @@ export async function registerRoutes(
   app.post("/api/expenses", requirePermission("expenses:write"), async (req, res) => {
     try {
       const data = insertExpenseSchema.parse(req.body);
-      
+
       // Get active cash register session
       const activeSession = await storage.getActiveCashRegisterSession();
-      
+
       const expense = await storage.createExpense({
         ...data,
         cashRegisterSessionId: activeSession?.id || null,
       });
-      
+
       res.status(201).json(expense);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -3061,8 +3053,19 @@ export async function registerRoutes(
       if (!existing) {
         return res.status(404).json({ error: "Expense not found" });
       }
-      
-      const data = insertExpenseSchema.partial().parse(req.body);
+
+      // Extract date separately for parsing
+      const { date: dateStr, ...rest } = req.body;
+      const data = insertExpenseSchema.partial().parse(rest);
+
+      // Parse date string if provided
+      if (dateStr) {
+        const parsedDate = parseDateInput(dateStr);
+        if (parsedDate) {
+          (data as any).date = parsedDate;
+        }
+      }
+
       const expense = await storage.updateExpense(req.params.id, data);
       res.json(expense);
     } catch (error) {
@@ -3072,6 +3075,7 @@ export async function registerRoutes(
       res.status(500).json({ error: "Failed to update expense" });
     }
   });
+
 
   app.delete("/api/expenses/:id", async (req, res) => {
     try {
@@ -3227,44 +3231,21 @@ export async function registerRoutes(
       const items = await storage.getItems();
       const customers = await storage.getCustomers();
       const purchases = await storage.getPurchaseInvoices();
+      const suppliers = await storage.getSuppliers();
       const payments = await storage.getPayments();
 
       // Calculate totals
       const totalSales = sales.reduce((sum, s) => sum + s.totalAmount, 0);
       const totalProfit = sales.reduce((sum, s) => sum + s.profit, 0);
-      
+
       // Calculate inventory value from available items
       const availableItems = items.filter(i => i.status === "available");
       const inventoryValue = availableItems.reduce((sum, i) => sum + i.purchasePrice, 0);
       const inventoryCount = availableItems.length;
-      
+
       // Outstanding balances
       const outstandingCustomerBalance = customers.reduce((sum, c) => sum + Math.max(0, c.balance || 0), 0);
-      const unpaidBySupplierId = new Map<string, number>();
-      for (const purchase of purchases) {
-        const supplierId = purchase.supplierId;
-        if (!supplierId) continue;
-        const unpaidAmount = purchase.totalAmount - (purchase.paidAmount || 0);
-        if (unpaidAmount === 0) continue;
-        unpaidBySupplierId.set(supplierId, (unpaidBySupplierId.get(supplierId) || 0) + unpaidAmount);
-      }
-
-      const paidBySupplierId = new Map<string, number>();
-      for (const payment of payments) {
-        if (payment.type !== "supplier") continue;
-        paidBySupplierId.set(
-          payment.entityId,
-          (paidBySupplierId.get(payment.entityId) || 0) + payment.amount,
-        );
-      }
-
-      const outstandingSupplierBalance = Array.from(unpaidBySupplierId.entries()).reduce(
-        (sum, [supplierId, unpaid]) => {
-          const paid = paidBySupplierId.get(supplierId) || 0;
-          return sum + Math.max(0, unpaid - paid);
-        },
-        0,
-      );
+      const outstandingSupplierBalance = suppliers.reduce((sum, s) => sum + Math.max(0, s.balance || 0), 0);
 
       res.json({
         totalSales,
@@ -3295,8 +3276,8 @@ export async function registerRoutes(
 
       // Get recent activity (last 10 items combined)
       const activities = [
-        ...sales.map(s => ({ 
-          type: "sale" as const, 
+        ...sales.map(s => ({
+          type: "sale" as const,
           id: s.id,
           description: `Sale ${s.saleNumber}${s.customerId ? ` to ${customerMap.get(s.customerId) || 'Customer'}` : ''}`,
           amount: s.totalAmount,
@@ -3305,7 +3286,7 @@ export async function registerRoutes(
         })),
         ...payments.map(p => {
           const isRefund = p.transactionType === "refund";
-          const entityName = p.type === "customer" 
+          const entityName = p.type === "customer"
             ? customerMap.get(p.entityId) || "Customer"
             : supplierMap.get(p.entityId) || "Supplier";
           const actionWord = isRefund ? "Refund" : "Payment";
@@ -3323,8 +3304,8 @@ export async function registerRoutes(
             paymentEntityType: p.type,
           };
         }),
-        ...purchases.map(p => ({ 
-          type: "purchase" as const, 
+        ...purchases.map(p => ({
+          type: "purchase" as const,
           id: p.id,
           description: `Purchase ${p.invoiceNumber}${p.supplierId ? ` from ${supplierMap.get(p.supplierId) || 'Supplier'}` : ''}`,
           amount: p.totalAmount,
@@ -3401,7 +3382,7 @@ export async function registerRoutes(
       });
 
       const totalValue = Object.values(categoryTotals).reduce((a, b) => a + b, 0);
-      
+
       const chartData = Object.entries(categoryTotals)
         .map(([name, value]) => ({
           name,
@@ -3497,7 +3478,7 @@ export async function registerRoutes(
       filteredSales.forEach(sale => {
         const saleDate = new Date(sale.date);
         let key: string;
-        
+
         if (groupBy === "week") {
           const weekStart = new Date(saleDate);
           weekStart.setDate(weekStart.getDate() - weekStart.getDay());
@@ -3520,7 +3501,7 @@ export async function registerRoutes(
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([date, data]) => ({
           date,
-          label: groupBy === "month" 
+          label: groupBy === "month"
             ? new Date(date + "-01").toLocaleDateString("en-US", { month: "short", year: "2-digit" })
             : new Date(date).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
           revenue: data.revenue,

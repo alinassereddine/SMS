@@ -141,7 +141,7 @@ export default function Expenses() {
   const { data: expenses = [], isLoading } = useQuery<Expense[]>({
     queryKey: ["/api/expenses"],
   });
-  
+
   const { from: dateFrom, to: dateTo } = getDateRange(datePreset);
 
   const form = useForm<ExpenseFormValues>({
@@ -264,8 +264,8 @@ export default function Expenses() {
   const paymentMethodData = useMemo(() => {
     const totals: Record<string, number> = {};
     filteredExpenses.forEach(e => {
-      const method = e.paymentMethod === "transfer" ? "Bank Transfer" : 
-                     e.paymentMethod.charAt(0).toUpperCase() + e.paymentMethod.slice(1);
+      const method = e.paymentMethod === "transfer" ? "Bank Transfer" :
+        e.paymentMethod.charAt(0).toUpperCase() + e.paymentMethod.slice(1);
       totals[method] = (totals[method] || 0) + e.amount;
     });
     return Object.entries(totals)
@@ -333,7 +333,7 @@ export default function Expenses() {
               Edit
             </DropdownMenuItem>
             {canDelete && (
-              <DropdownMenuItem 
+              <DropdownMenuItem
                 onClick={() => deleteMutation.mutate(expense.id)}
                 className="text-destructive"
               >
@@ -545,7 +545,7 @@ export default function Expenses() {
                         <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
                       ))}
                     </Pie>
-                    <Tooltip 
+                    <Tooltip
                       formatter={(value: number) => formatCurrency(value)}
                       contentStyle={{
                         backgroundColor: "hsl(var(--background))",
@@ -627,7 +627,9 @@ export default function Expenses() {
         emptyMessage="No expenses found"
         emptyDescription="Record your first expense."
         getRowKey={(e) => e.id}
+        pageSize={10}
       />
+
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="sm:max-w-md">
@@ -731,8 +733,8 @@ export default function Expenses() {
                 <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
                   Cancel
                 </Button>
-                <Button 
-                  type="submit" 
+                <Button
+                  type="submit"
                   disabled={createMutation.isPending}
                   data-testid="button-save-expense"
                 >

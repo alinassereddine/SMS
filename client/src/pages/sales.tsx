@@ -351,7 +351,7 @@ export default function Sales() {
   });
 
   const filteredSales = sales.filter((sale) => {
-    const matchesSearch = 
+    const matchesSearch =
       sale.saleNumber.toLowerCase().includes(search.toLowerCase()) ||
       sale.customer?.name.toLowerCase().includes(search.toLowerCase());
     const matchesPayment = paymentFilter === "all" || sale.paymentType === paymentFilter;
@@ -449,7 +449,7 @@ export default function Sales() {
               Print Receipt
             </DropdownMenuItem>
             {canDelete && (
-              <DropdownMenuItem 
+              <DropdownMenuItem
                 onClick={() => setDeleteConfirmSale(sale)}
                 className="text-destructive"
               >
@@ -567,7 +567,9 @@ export default function Sales() {
         emptyMessage="No sales found"
         emptyDescription="Start a new sale from the POS."
         getRowKey={(s) => s.id}
+        pageSize={10}
       />
+
 
       <Dialog open={!!selectedSale} onOpenChange={() => setSelectedSale(null)}>
         <DialogContent className="sm:max-w-2xl">
@@ -701,13 +703,13 @@ export default function Sales() {
               Edit sale <span className="font-mono font-medium">{editSale?.saleNumber}</span>
             </DialogDescription>
           </DialogHeader>
-          
+
           <div className="flex-1 overflow-y-auto space-y-4 pr-2">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <span className="text-sm font-medium">Customer</span>
-                <Select 
-                  value={editCustomerId || "walk-in"} 
+                <Select
+                  value={editCustomerId || "walk-in"}
                   onValueChange={(v) => setEditCustomerId(v === "walk-in" ? null : v)}
                 >
                   <SelectTrigger data-testid="select-edit-customer">
@@ -738,9 +740,9 @@ export default function Sales() {
             <div className="space-y-2">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-sm font-medium">Items ({editItems.length})</span>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
+                <Button
+                  variant="outline"
+                  size="sm"
                   onClick={() => setShowAddItem(true)}
                   data-testid="button-add-item"
                 >
@@ -748,7 +750,7 @@ export default function Sales() {
                   Add Item
                 </Button>
               </div>
-              
+
               {editItems.length === 0 ? (
                 <p className="text-sm text-muted-foreground p-4 text-center border rounded-lg">
                   No items. Add at least one item.

@@ -43,6 +43,8 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { formatCurrency, formatDateInput, formatDateTime, generateSessionNumber, parseDateValue } from "@/lib/utils";
 import type { CashRegisterSession } from "@shared/schema";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 
 function exportSessionToCSV(session: CashRegisterSession) {
   const formatValue = (v: any) => v === null || v === undefined ? "" : String(v);
@@ -252,16 +254,14 @@ export default function CashRegister() {
       header: "Session",
       render: (session) => (
         <div className="flex items-center gap-3">
-          <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${
-            session.status === "open" 
-              ? "bg-emerald-500/10" 
-              : "bg-gray-500/10"
-          }`}>
-            <CreditCard className={`h-4 w-4 ${
-              session.status === "open" 
-                ? "text-emerald-600 dark:text-emerald-400" 
-                : "text-gray-600 dark:text-gray-400"
-            }`} />
+          <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${session.status === "open"
+            ? "bg-emerald-500/10"
+            : "bg-gray-500/10"
+            }`}>
+            <CreditCard className={`h-4 w-4 ${session.status === "open"
+              ? "text-emerald-600 dark:text-emerald-400"
+              : "text-gray-600 dark:text-gray-400"
+              }`} />
           </div>
           <div>
             <p className="font-mono text-sm font-medium">{session.sessionNumber}</p>
@@ -302,13 +302,12 @@ export default function CashRegister() {
         if (session.difference === null) return "-";
         const diff = session.difference;
         return (
-          <span className={`font-mono text-sm font-medium ${
-            diff === 0 
-              ? "text-emerald-600 dark:text-emerald-400" 
-              : diff > 0 
+          <span className={`font-mono text-sm font-medium ${diff === 0
+            ? "text-emerald-600 dark:text-emerald-400"
+            : diff > 0
               ? "text-blue-600 dark:text-blue-400"
               : "text-red-600 dark:text-red-400"
-          }`}>
+            }`}>
             {diff > 0 ? "+" : ""}{formatCurrency(diff)}
           </span>
         );
@@ -362,7 +361,7 @@ export default function CashRegister() {
   };
 
   const allTransactions: SessionTransaction[] = activeSession?.transactions || [];
-  
+
   const openingTransaction: SessionTransaction = {
     id: 'opening',
     type: 'opening',
@@ -374,7 +373,7 @@ export default function CashRegister() {
     note: 'Starting balance',
   };
 
-  const transactionsWithOpening = activeSession 
+  const transactionsWithOpening = activeSession
     ? [openingTransaction, ...allTransactions]
     : [];
 
@@ -385,7 +384,7 @@ export default function CashRegister() {
   });
 
   const { from: dateFrom, to: dateTo } = getDateRange(datePreset);
-  
+
   const filteredTransactions = sortedTransactions.filter(tx => {
     // Category filter
     if (categoryFilter !== "all" && tx.type !== categoryFilter) {
@@ -438,6 +437,8 @@ export default function CashRegister() {
     ? transactionsWithBalance[transactionsWithBalance.length - 1].balance
     : activeSession?.openingBalance || 0;
 
+
+
   const formatDate = (dateStr: string | Date) => {
     const date = typeof dateStr === 'string' ? new Date(dateStr) : dateStr;
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
@@ -448,12 +449,89 @@ export default function CashRegister() {
     return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
   };
 
+  const [showAllTransactions, setShowAllTransactions] = useState(false);
+
+  const transactionColumns: Column<SessionTransaction & { balance: number }>[] = [
+    {
+      key: "date",
+      header: "Date",
+      className: "w-24",
+      render: (tx) => <span className="text-sm">{formatDate(tx.date)}</span>,
+    },
+    {
+      key: "time",
+      header: "Time",
+      className: "w-20",
+      render: (tx) => <span className="text-sm text-muted-foreground">{formatTime(tx.date)}</span>,
+    },
+    {
+      key: "category",
+      header: "Category",
+      className: "w-32",
+      render: (tx) => <span className="text-sm">{getCategoryLabel(tx.type)}</span>,
+    },
+    {
+      key: "entity",
+      header: "Customer / Supplier",
+      render: (tx) => <span className="text-sm">{tx.customerName || tx.supplierName || "—"}</span>,
+    },
+    {
+      key: "products",
+      header: "Products",
+      render: (tx) => <span className="text-sm max-w-[200px] truncate block">{tx.products || "—"}</span>,
+    },
+    {
+      key: "note",
+      header: "Note",
+      render: (tx) => <span className="text-sm max-w-[200px] truncate block">{tx.note || tx.description || "—"}</span>,
+    },
+    {
+      key: "amount",
+      header: "Amount",
+      className: "w-28 text-right",
+      render: (tx) => {
+        if (tx.type === 'opening') {
+          return <span className="font-mono text-sm text-muted-foreground">{formatCurrency(0)}</span>;
+        }
+        const display = getTransactionDisplay(tx);
+        return (
+          <span className={`font-mono text-sm font-medium ${display.isPositive
+            ? "text-emerald-600 dark:text-emerald-400"
+            : "text-red-600 dark:text-red-400"
+            }`}>
+            {display.isPositive ? "+" : "-"}{formatCurrency(display.amount)}
+          </span>
+        );
+      },
+    },
+    {
+      key: "balance",
+      header: "Balance",
+      className: "w-28 text-right",
+      render: (tx) => <span className="font-mono text-sm font-medium">{formatCurrency(tx.balance)}</span>,
+    },
+    {
+      key: "actions",
+      header: "",
+      className: "w-20",
+      render: (tx) => (
+        tx.type !== 'opening' ? (
+          <div className="flex items-center gap-1">
+            <Button variant="ghost" size="icon" className="h-8 w-8" data-testid={`button-edit-tx-${tx.id}`}>
+              <Pencil className="h-3 w-3" />
+            </Button>
+          </div>
+        ) : null
+      ),
+    },
+  ];
+
   return (
     <div className="space-y-6">
       {activeSession ? (
         <>
-          <PageHeader 
-            title={`Cash Register - ${formatDate(activeSession.openedAt)}`} 
+          <PageHeader
+            title={`Cash Register - ${formatDate(activeSession.openedAt)}`}
             description={`Session ${activeSession.sessionNumber}`}
           >
             <div className="flex flex-wrap items-center gap-2">
@@ -465,7 +543,7 @@ export default function CashRegister() {
                 <Pencil className="h-4 w-4 mr-2" />
                 Edit Open Date
               </Button>
-              <Button 
+              <Button
                 onClick={handleOpenClose}
                 variant="destructive"
                 data-testid="button-close-session"
@@ -549,91 +627,35 @@ export default function CashRegister() {
 
             <Card>
               <CardContent className="pt-4 pb-4">
-                <p className="text-sm text-muted-foreground mb-1">Filtered Balance</p>
-                <p className="text-xs text-muted-foreground mb-2">Opening balance plus all filtered inflows/outflows</p>
-                <p className="text-2xl font-bold font-mono">{formatCurrency(filteredBalance)}</p>
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div>
+                    <p className="text-sm text-muted-foreground mb-1">Filtered Balance</p>
+                    <p className="text-xs text-muted-foreground mb-2">Opening balance plus all filtered inflows/outflows</p>
+                    <p className="text-2xl font-bold font-mono">{formatCurrency(filteredBalance)}</p>
+                  </div>
+                  <div className="flex items-center space-x-2 bg-muted/50 p-2 rounded-lg">
+                    <Switch
+                      id="show-all"
+                      checked={showAllTransactions}
+                      onCheckedChange={setShowAllTransactions}
+                    />
+                    <Label htmlFor="show-all" className="text-sm font-medium cursor-pointer">
+                      Show All Transactions
+                    </Label>
+                  </div>
+                </div>
               </CardContent>
             </Card>
 
-            <div className="border rounded-lg overflow-hidden">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-24">Date</TableHead>
-                    <TableHead className="w-20">Time</TableHead>
-                    <TableHead className="w-32">Category</TableHead>
-                    <TableHead>Customer / Supplier</TableHead>
-                    <TableHead>Products</TableHead>
-                    <TableHead>Note</TableHead>
-                    <TableHead className="w-28 text-right">Amount</TableHead>
-                    <TableHead className="w-28 text-right">Balance</TableHead>
-                    <TableHead className="w-20"></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {transactionsWithBalance.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
-                        No transactions recorded yet
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    transactionsWithBalance.map((tx) => (
-                      <TableRow key={tx.id} data-testid={`row-transaction-${tx.id}`}>
-                        <TableCell className="text-sm">{formatDate(tx.date)}</TableCell>
-                        <TableCell className="text-sm text-muted-foreground">{formatTime(tx.date)}</TableCell>
-                        <TableCell>
-                          <span className="text-sm">{getCategoryLabel(tx.type)}</span>
-                        </TableCell>
-                        <TableCell className="text-sm">
-                          {tx.customerName || tx.supplierName || "—"}
-                        </TableCell>
-                        <TableCell className="text-sm max-w-[200px] truncate">
-                          {tx.products || "—"}
-                        </TableCell>
-                        <TableCell className="text-sm max-w-[200px] truncate">
-                          {tx.note || tx.description || "—"}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {tx.type === 'opening' ? (
-                            <span className="font-mono text-sm text-muted-foreground">
-                              {formatCurrency(0)}
-                            </span>
-                          ) : (
-                            (() => {
-                              const display = getTransactionDisplay(tx);
-                              return (
-                            <span className={`font-mono text-sm font-medium ${
-                              display.isPositive
-                                ? "text-emerald-600 dark:text-emerald-400" 
-                                : "text-red-600 dark:text-red-400"
-                            }`}>
-                              {display.isPositive ? "+" : "-"}{formatCurrency(display.amount)}
-                            </span>
-                              );
-                            })()
-                          )}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <span className="font-mono text-sm font-medium">
-                            {formatCurrency(tx.balance)}
-                          </span>
-                        </TableCell>
-                        <TableCell>
-                          {tx.type !== 'opening' && (
-                            <div className="flex items-center gap-1">
-                              <Button variant="ghost" size="icon" className="h-8 w-8" data-testid={`button-edit-tx-${tx.id}`}>
-                                <Pencil className="h-3 w-3" />
-                              </Button>
-                            </div>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </div>
+            <DataTable
+              columns={transactionColumns}
+              data={transactionsWithBalance}
+              isLoading={isLoading}
+              emptyMessage="No transactions recorded yet"
+              emptyDescription="Start trading to see transactions here."
+              getRowKey={(tx) => tx.id}
+              pageSize={showAllTransactions ? undefined : 10}
+            />
           </div>
         </>
       ) : (
@@ -644,7 +666,7 @@ export default function CashRegister() {
                 <History className="h-4 w-4 mr-2" />
                 View History
               </Button>
-              <Button 
+              <Button
                 onClick={handleOpenClose}
                 data-testid="button-open-session"
               >
@@ -769,7 +791,7 @@ export default function CashRegister() {
             <Button variant="outline" onClick={() => setIsOpenDialogOpen(false)}>
               Cancel
             </Button>
-            <Button 
+            <Button
               onClick={() => openSessionMutation.mutate()}
               disabled={openSessionMutation.isPending}
               data-testid="button-confirm-open"
@@ -808,18 +830,16 @@ export default function CashRegister() {
             </div>
 
             {activeSession && (
-              <div className={`p-4 rounded-lg ${
-                actualBalance === (activeSession.expectedBalance || activeSession.openingBalance)
-                  ? "bg-emerald-500/10"
-                  : "bg-amber-500/10"
-              }`}>
+              <div className={`p-4 rounded-lg ${actualBalance === (activeSession.expectedBalance || activeSession.openingBalance)
+                ? "bg-emerald-500/10"
+                : "bg-amber-500/10"
+                }`}>
                 <div className="flex justify-between items-center">
                   <span className="text-sm font-medium">Difference</span>
-                  <span className={`font-mono font-bold text-lg ${
-                    actualBalance === (activeSession.expectedBalance || activeSession.openingBalance)
-                      ? "text-emerald-600 dark:text-emerald-400"
-                      : "text-amber-600 dark:text-amber-400"
-                  }`}>
+                  <span className={`font-mono font-bold text-lg ${actualBalance === (activeSession.expectedBalance || activeSession.openingBalance)
+                    ? "text-emerald-600 dark:text-emerald-400"
+                    : "text-amber-600 dark:text-amber-400"
+                    }`}>
                     {actualBalance >= (activeSession.expectedBalance || activeSession.openingBalance) ? "+" : ""}
                     {formatCurrency(actualBalance - (activeSession.expectedBalance || activeSession.openingBalance))}
                   </span>
@@ -829,8 +849,8 @@ export default function CashRegister() {
 
             <div>
               <label className="text-sm font-medium mb-2 block">Notes (if discrepancy)</label>
-              <Textarea 
-                placeholder="Explain any discrepancy..." 
+              <Textarea
+                placeholder="Explain any discrepancy..."
                 value={closeNotes}
                 onChange={(e) => setCloseNotes(e.target.value)}
               />
@@ -840,7 +860,7 @@ export default function CashRegister() {
             <Button variant="outline" onClick={() => setIsCloseDialogOpen(false)}>
               Cancel
             </Button>
-            <Button 
+            <Button
               onClick={() => closeSessionMutation.mutate()}
               disabled={closeSessionMutation.isPending}
               variant="destructive"
@@ -876,7 +896,7 @@ export default function CashRegister() {
             <Button variant="outline" onClick={() => setEditSession(null)}>
               Cancel
             </Button>
-            <Button 
+            <Button
               onClick={handleSaveEditDate}
               disabled={editDateMutation.isPending}
               data-testid="button-save-edit-date"

@@ -240,7 +240,7 @@ export default function Payments() {
 
   const filteredPayments = payments.filter((payment) => {
     const matchesType = typeFilter === "all" || payment.type === typeFilter;
-    const matchesSearch = 
+    const matchesSearch =
       payment.entity?.name?.toLowerCase().includes(search.toLowerCase()) ||
       payment.reference?.toLowerCase().includes(search.toLowerCase());
     const paymentDate = parseDateValue(payment.date);
@@ -256,11 +256,10 @@ export default function Payments() {
       header: "From/To",
       render: (payment) => (
         <div className="flex items-center gap-3">
-          <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${
-            payment.type === "customer" 
-              ? "bg-emerald-500/10" 
-              : "bg-blue-500/10"
-          }`}>
+          <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${payment.type === "customer"
+            ? "bg-emerald-500/10"
+            : "bg-blue-500/10"
+            }`}>
             {payment.type === "customer" ? (
               <User className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
             ) : (
@@ -291,9 +290,8 @@ export default function Payments() {
           : "text-red-600 dark:text-red-400";
         return (
           <div className="flex items-center gap-2">
-            <span className={`font-mono text-sm font-medium ${
-              isPositive ? positiveClass : negativeClass
-            }`}>
+            <span className={`font-mono text-sm font-medium ${isPositive ? positiveClass : negativeClass
+              }`}>
               {isPositive ? "+" : "-"}{formatCurrency(amount)}
             </span>
             {isRefund && (
@@ -342,39 +340,40 @@ export default function Payments() {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-          <DropdownMenuItem onClick={() => handleOpenEdit(payment)}>
-            <Pencil className="h-4 w-4 mr-2" />
-            Edit
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => setViewPayment(payment)}>
-            <Eye className="h-4 w-4 mr-2" />
-            View Details
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() => setDeleteConfirmPayment(payment)}
-            className="text-destructive"
-          >
-            <Trash2 className="h-4 w-4 mr-2" />
-            Archive
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    ),
+            <DropdownMenuItem onClick={() => handleOpenEdit(payment)}>
+              <Pencil className="h-4 w-4 mr-2" />
+              Edit
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setViewPayment(payment)}>
+              <Eye className="h-4 w-4 mr-2" />
+              View Details
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => setDeleteConfirmPayment(payment)}
+              className="text-destructive"
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Archive
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ),
     },
   ];
 
-  const customerNet = payments
-    .filter((p) => p.type === "customer")
-    .reduce((sum, p) => {
-      const amount = Math.abs(p.amount);
-      return sum + (p.transactionType === "refund" ? amount : -amount);
-    }, 0);
-  const supplierNet = payments
-    .filter((p) => p.type === "supplier")
-    .reduce((sum, p) => {
-      const amount = Math.abs(p.amount);
-      return sum + (p.transactionType === "refund" ? amount : -amount);
-    }, 0);
+  // Calculate separate totals for payments and refunds
+  const customerPayments = payments
+    .filter((p) => p.type === "customer" && p.transactionType === "payment")
+    .reduce((sum, p) => sum + Math.abs(p.amount), 0);
+  const customerRefunds = payments
+    .filter((p) => p.type === "customer" && p.transactionType === "refund")
+    .reduce((sum, p) => sum + Math.abs(p.amount), 0);
+  const supplierPayments = payments
+    .filter((p) => p.type === "supplier" && p.transactionType === "payment")
+    .reduce((sum, p) => sum + Math.abs(p.amount), 0);
+  const supplierRefunds = payments
+    .filter((p) => p.type === "supplier" && p.transactionType === "refund")
+    .reduce((sum, p) => sum + Math.abs(p.amount), 0);
 
   const downloadTemplate = () => {
     const header = [
@@ -504,35 +503,65 @@ export default function Payments() {
         </div>
       </PageHeader>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardContent className="pt-6">
-            <div className="text-2xl font-bold">{payments.length}</div>
-            <p className="text-xs text-muted-foreground">Total Payments</p>
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500/10">
+                <User className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+              </div>
+              <div>
+                <div className="text-2xl font-bold font-mono text-emerald-600 dark:text-emerald-400">
+                  +{formatCurrency(customerPayments)}
+                </div>
+                <p className="text-xs text-muted-foreground">From Customers</p>
+              </div>
+            </div>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6">
-            <div className={`text-2xl font-bold ${
-              customerNet >= 0
-                ? "text-emerald-600 dark:text-emerald-400"
-                : "text-red-600 dark:text-red-400"
-            }`}>
-              {customerNet >= 0 ? "+" : "-"}{formatCurrency(Math.abs(customerNet))}
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-red-500/10">
+                <Truck className="h-5 w-5 text-red-600 dark:text-red-400" />
+              </div>
+              <div>
+                <div className="text-2xl font-bold font-mono text-red-600 dark:text-red-400">
+                  -{formatCurrency(supplierPayments)}
+                </div>
+                <p className="text-xs text-muted-foreground">To Suppliers</p>
+              </div>
             </div>
-            <p className="text-xs text-muted-foreground">From Customers</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6">
-            <div className={`text-2xl font-bold ${
-              supplierNet >= 0
-                ? "text-red-600 dark:text-red-400"
-                : "text-emerald-600 dark:text-emerald-400"
-            }`}>
-              {supplierNet >= 0 ? "+" : "-"}{formatCurrency(Math.abs(supplierNet))}
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-red-500/10">
+                <User className="h-5 w-5 text-red-600 dark:text-red-400" />
+              </div>
+              <div>
+                <div className="text-2xl font-bold font-mono text-red-600 dark:text-red-400">
+                  -{formatCurrency(customerRefunds)}
+                </div>
+                <p className="text-xs text-muted-foreground">Refunds to Customers</p>
+              </div>
             </div>
-            <p className="text-xs text-muted-foreground">To Suppliers</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500/10">
+                <Truck className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+              </div>
+              <div>
+                <div className="text-2xl font-bold font-mono text-emerald-600 dark:text-emerald-400">
+                  +{formatCurrency(supplierRefunds)}
+                </div>
+                <p className="text-xs text-muted-foreground">Refunds from Suppliers</p>
+              </div>
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -572,7 +601,9 @@ export default function Payments() {
         emptyMessage="No payments found"
         emptyDescription="Record your first payment."
         getRowKey={(p) => p.id}
+        pageSize={10}
       />
+
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="sm:max-w-md">
@@ -634,27 +665,27 @@ export default function Payments() {
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {paymentType === "customer" 
+                        {paymentType === "customer"
                           ? sortedCustomers.map((c) => (
-                              <SelectItem key={c.id} value={c.id}>
-                                {c.name}
-                                {(c.balance || 0) > 0 && (
-                                  <span className="ml-2 text-muted-foreground">
-                                    (Owes {formatCurrency(c.balance || 0)})
-                                  </span>
-                                )}
-                              </SelectItem>
-                            ))
+                            <SelectItem key={c.id} value={c.id}>
+                              {c.name}
+                              {(c.balance || 0) > 0 && (
+                                <span className="ml-2 text-muted-foreground">
+                                  (Owes {formatCurrency(c.balance || 0)})
+                                </span>
+                              )}
+                            </SelectItem>
+                          ))
                           : sortedSuppliers.map((s) => (
-                              <SelectItem key={s.id} value={s.id}>
-                                {s.name}
-                                {(s.balance || 0) > 0 && (
-                                  <span className="ml-2 text-muted-foreground">
-                                    (Owe {formatCurrency(s.balance || 0)})
-                                  </span>
-                                )}
-                              </SelectItem>
-                            ))
+                            <SelectItem key={s.id} value={s.id}>
+                              {s.name}
+                              {(s.balance || 0) > 0 && (
+                                <span className="ml-2 text-muted-foreground">
+                                  (Owe {formatCurrency(s.balance || 0)})
+                                </span>
+                              )}
+                            </SelectItem>
+                          ))
                         }
                       </SelectContent>
                     </Select>
@@ -730,9 +761,9 @@ export default function Payments() {
                   <FormItem>
                     <FormLabel>Reference (Optional)</FormLabel>
                     <FormControl>
-                      <Textarea 
-                        placeholder="Check number, transfer ref..." 
-                        {...field} 
+                      <Textarea
+                        placeholder="Check number, transfer ref..."
+                        {...field}
                         data-testid="input-payment-reference"
                       />
                     </FormControl>
@@ -745,8 +776,8 @@ export default function Payments() {
                 <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
                   Cancel
                 </Button>
-                <Button 
-                  type="submit" 
+                <Button
+                  type="submit"
                   disabled={createMutation.isPending}
                   data-testid="button-save-payment"
                 >
@@ -822,7 +853,7 @@ export default function Payments() {
             <Button variant="outline" onClick={() => setEditPayment(null)}>
               Cancel
             </Button>
-            <Button 
+            <Button
               onClick={handleSaveEdit}
               disabled={editMutation.isPending}
               data-testid="button-save-edit"
