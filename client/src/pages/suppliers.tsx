@@ -1,12 +1,13 @@
 import { useRef, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, MoreHorizontal, Pencil, Trash2, Phone, Eye, Upload, Download } from "lucide-react";
+import { Plus, MoreHorizontal, Pencil, Trash2, Phone, Eye, Upload, Download, LayoutGrid, List } from "lucide-react";
 import { Link } from "wouter";
 import { PageHeader } from "@/components/page-header";
 import { DataTable, Column } from "@/components/data-table";
 import { SearchInput } from "@/components/search-input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -51,11 +52,14 @@ const supplierFormSchema = z.object({
 
 type SupplierFormValues = z.infer<typeof supplierFormSchema>;
 
+type ViewMode = "table" | "grid";
+
 export default function Suppliers() {
   const [search, setSearch] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
   const [isImporting, setIsImporting] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>("table");
   const importInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const { can } = useAuth();
@@ -387,17 +391,151 @@ export default function Suppliers() {
           placeholder="Search suppliers..."
           className="max-w-sm"
         />
+        <div className="flex items-center gap-1 border rounded-lg p-1">
+          <Button
+            variant={viewMode === "table" ? "secondary" : "ghost"}
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => setViewMode("table")}
+            title="Table view"
+          >
+            <List className="h-4 w-4" />
+          </Button>
+          <Button
+            variant={viewMode === "grid" ? "secondary" : "ghost"}
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => setViewMode("grid")}
+            title="Grid view"
+          >
+            <LayoutGrid className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
 
-      <DataTable
-        columns={columns}
-        data={filteredSuppliers}
-        isLoading={isLoading}
-        emptyMessage="No suppliers found"
-        emptyDescription="Get started by adding your first supplier."
-        getRowKey={(s) => s.id}
-        pageSize={10}
-      />
+      {viewMode === "table" ? (
+        <DataTable
+          columns={columns}
+          data={filteredSuppliers}
+          isLoading={isLoading}
+          emptyMessage="No suppliers found"
+          emptyDescription="Get started by adding your first supplier."
+          getRowKey={(s) => s.id}
+          pageSize={10}
+        />
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {isLoading ? (
+            Array.from({ length: 8 }).map((_, i) => (
+              <Card key={i} className="animate-pulse">
+                <CardContent className="pt-6">
+                  <div className="h-40 bg-muted rounded" />
+                </CardContent>
+              </Card>
+            ))
+          ) : filteredSuppliers.length === 0 ? (
+            <div className="col-span-full text-center py-12">
+              <p className="text-muted-foreground">No suppliers found</p>
+              <p className="text-sm text-muted-foreground">Get started by adding your first supplier.</p>
+            </div>
+          ) : (
+            filteredSuppliers.map((supplier) => {
+              const balance = supplier.balance ?? 0;
+              const isPositive = balance > 0;
+              return (
+                <Card key={supplier.id} className="hover:shadow-md transition-shadow">
+                  <CardContent className="pt-6">
+                    <div className="flex items-start justify-between mb-4">
+                      <Avatar className="h-12 w-12">
+                        <AvatarFallback className="text-sm font-medium bg-blue-500/10 text-blue-600 dark:text-blue-400">
+                          {getInitials(supplier.name)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          {canSeeDetails && (
+                            <DropdownMenuItem asChild>
+                              <Link href={`/suppliers/${supplier.id}`}>
+                                <Eye className="h-4 w-4 mr-2" />
+                                View Details
+                              </Link>
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuItem onClick={() => handleOpenDialog(supplier)}>
+                            <Pencil className="h-4 w-4 mr-2" />
+                            Edit
+                          </DropdownMenuItem>
+                          {canDelete && (
+                            <DropdownMenuItem
+                              onClick={() => deleteMutation.mutate(supplier.id)}
+                              className="text-destructive"
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Delete
+                            </DropdownMenuItem>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+
+                    <div className="space-y-3">
+                      <div>
+                        <h3 className="font-semibold text-lg truncate">{supplier.name}</h3>
+                        {supplier.phone && (
+                          <p className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
+                            <Phone className="h-3 w-3" />
+                            {supplier.phone}
+                          </p>
+                        )}
+                      </div>
+
+                      {supplier.email && (
+                        <p className="text-sm text-muted-foreground truncate">{supplier.email}</p>
+                      )}
+
+                      {canSeeBalance && (
+                        <div className="pt-3 border-t">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm text-muted-foreground">Balance</span>
+                            <div className="flex items-center gap-2">
+                              <span className={`font-mono text-sm font-medium ${
+                                isPositive
+                                  ? "text-red-600 dark:text-red-400"
+                                  : balance < 0
+                                  ? "text-emerald-600 dark:text-emerald-400"
+                                  : ""
+                              }`}>
+                                {formatCurrency(Math.abs(balance))}
+                              </span>
+                              {balance !== 0 && (
+                                <Badge
+                                  variant="secondary"
+                                  className={`text-xs ${
+                                    isPositive
+                                      ? "bg-red-500/10 text-red-600 dark:text-red-400"
+                                      : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                                  }`}
+                                >
+                                  {isPositive ? "Owe" : "Prepaid"}
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })
+          )}
+        </div>
+      )}
 
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>

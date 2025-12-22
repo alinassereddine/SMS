@@ -146,6 +146,7 @@ export default function Purchases() {
   const canSeeBalance = can("purchases:balance");
   const canDelete = can("purchases:delete");
   const canImport = can("purchases:write");
+  const canViewKPIs = can("reports:read");
   const { from: dateFrom, to: dateTo } = getDateRange(datePreset);
   const [editPaidAmount, setEditPaidAmount] = useState(0);
   const [editNotes, setEditNotes] = useState("");
@@ -627,30 +628,32 @@ export default function Purchases() {
         </div>
       </PageHeader>
 
-      <div className={`grid gap-4 ${canSeeBalance ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-2xl font-bold">{filteredInvoices.length}</div>
-            <p className="text-xs text-muted-foreground">Total Invoices</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-2xl font-bold">{formatCurrency(totalPurchases)}</div>
-            <p className="text-xs text-muted-foreground">Total Purchases</p>
-          </CardContent>
-        </Card>
-        {canSeeBalance && (
+      {canViewKPIs && (
+        <div className={`grid gap-4 ${canSeeBalance ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
           <Card>
             <CardContent className="pt-6">
-              <div className="text-2xl font-bold text-red-600 dark:text-red-400">
-                {formatCurrency(totalOwed)}
-              </div>
-              <p className="text-xs text-muted-foreground">Outstanding Balance</p>
+              <div className="text-2xl font-bold">{filteredInvoices.length}</div>
+              <p className="text-xs text-muted-foreground">Total Invoices</p>
             </CardContent>
           </Card>
-        )}
-      </div>
+          <Card>
+            <CardContent className="pt-6">
+              <div className="text-2xl font-bold">{formatCurrency(totalPurchases)}</div>
+              <p className="text-xs text-muted-foreground">Total Purchases</p>
+            </CardContent>
+          </Card>
+          {canSeeBalance && (
+            <Card>
+              <CardContent className="pt-6">
+                <div className="text-2xl font-bold text-red-600 dark:text-red-400">
+                  {formatCurrency(totalOwed)}
+                </div>
+                <p className="text-xs text-muted-foreground">Outstanding Balance</p>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-4">
         <SearchInput

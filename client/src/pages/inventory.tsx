@@ -15,12 +15,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import { useAuth } from "@/lib/auth";
 import type { ItemWithProduct } from "@shared/schema";
 
 
 export default function Inventory() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const { can } = useAuth();
+  const canViewKPIs = can("reports:read");
 
   const { data: items = [], isLoading } = useQuery<ItemWithProduct[]>({
     queryKey: ["/api/items"],
@@ -104,34 +107,36 @@ export default function Inventory() {
         />
       </PageHeader>
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500/10">
-                <Package className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+      {canViewKPIs && (
+        <div className="grid gap-4 md:grid-cols-2">
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500/10">
+                  <Package className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                </div>
+                <div>
+                  <div className="text-2xl font-bold" data-testid="text-available-count">{availableCount}</div>
+                  <p className="text-xs text-muted-foreground">Available Items</p>
+                </div>
               </div>
-              <div>
-                <div className="text-2xl font-bold" data-testid="text-available-count">{availableCount}</div>
-                <p className="text-xs text-muted-foreground">Available Items</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-500/10">
+                  <DollarSign className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                </div>
+                <div>
+                  <div className="text-2xl font-bold font-mono" data-testid="text-available-value">{formatCurrency(availableValue)}</div>
+                  <p className="text-xs text-muted-foreground">Total Stock Value</p>
+                </div>
               </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-500/10">
-                <DollarSign className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-              </div>
-              <div>
-                <div className="text-2xl font-bold font-mono" data-testid="text-available-value">{formatCurrency(availableValue)}</div>
-                <p className="text-xs text-muted-foreground">Total Stock Value</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-4">
         <SearchInput

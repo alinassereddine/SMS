@@ -20,6 +20,20 @@ export async function seedDatabase() {
         permissions: [],
       },
       {
+        username: "ceo@topupapp.online",
+        password: "9613985747",
+        displayName: "CEO",
+        role: "admin",
+        permissions: [],
+      },
+      {
+        username: "saleh-bros@live.com",
+        password: "9613985747",
+        displayName: "Saleh Bros",
+        role: "cashier",
+        permissions: [],
+      },
+      {
         username: "Alaa",
         password: "Alaa1",
         displayName: "Alaa",

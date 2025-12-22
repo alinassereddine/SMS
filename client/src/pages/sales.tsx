@@ -111,6 +111,7 @@ export default function Sales() {
   const { can } = useAuth();
   const canDelete = can("sales:delete");
   const canImport = can("sales:write");
+  const canViewKPIs = can("reports:read");
   const { from: dateFrom, to: dateTo } = getDateRange(datePreset);
   const [editSale, setEditSale] = useState<SaleWithCustomer | null>(null);
   const [editItems, setEditItems] = useState<EditItem[]>([]);
@@ -505,28 +506,30 @@ export default function Sales() {
         </div>
       </PageHeader>
 
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-2xl font-bold">{filteredSales.length}</div>
-            <p className="text-xs text-muted-foreground">Total Sales</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-2xl font-bold">{formatCurrency(totalSales)}</div>
-            <p className="text-xs text-muted-foreground">Total Revenue</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
-              {formatCurrency(totalProfit)}
-            </div>
-            <p className="text-xs text-muted-foreground">Total Profit</p>
-          </CardContent>
-        </Card>
-      </div>
+      {canViewKPIs && (
+        <div className="grid gap-4 md:grid-cols-3">
+          <Card>
+            <CardContent className="pt-6">
+              <div className="text-2xl font-bold">{filteredSales.length}</div>
+              <p className="text-xs text-muted-foreground">Total Sales</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-6">
+              <div className="text-2xl font-bold">{formatCurrency(totalSales)}</div>
+              <p className="text-xs text-muted-foreground">Total Revenue</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-6">
+              <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+                {formatCurrency(totalProfit)}
+              </div>
+              <p className="text-xs text-muted-foreground">Total Profit</p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-4">
         <SearchInput

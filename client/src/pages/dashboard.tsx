@@ -1,10 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
-import { 
-  DollarSign, 
-  Package, 
-  ShoppingCart, 
-  TrendingUp, 
-  Users, 
+import {
+  DollarSign,
+  Package,
+  ShoppingCart,
+  TrendingUp,
+  Users,
   Truck,
   ArrowUpRight,
   ArrowDownRight,
@@ -16,6 +16,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/status-badge";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils";
+import { useAuth } from "@/lib/auth";
 import type { Sale, PurchaseInvoice, Payment } from "@shared/schema";
 import {
   LineChart,
@@ -70,6 +71,22 @@ interface CategoryData {
 const COLORS = ["hsl(var(--chart-1))", "hsl(var(--chart-2))", "hsl(var(--chart-3))", "hsl(var(--chart-4))", "hsl(var(--chart-5))"];
 
 export default function Dashboard() {
+  const { can } = useAuth();
+
+  // Check if user has permission to view dashboard
+  if (!can("dashboard:read")) {
+    return (
+      <div className="space-y-6">
+        <PageHeader title="Dashboard" description="Overview of your business performance" />
+        <Card>
+          <CardContent className="py-8 text-center">
+            <p className="text-muted-foreground">You do not have permission to view the dashboard.</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   const { data: stats, isLoading: statsLoading } = useQuery<DashboardStats>({
     queryKey: ["/api/dashboard/stats"],
   });

@@ -121,18 +121,39 @@ export function AppSidebar() {
   // Filter nav items based on permissions
   const filteredMainNav = mainNavItems.filter(item => {
     if (item.url === "/") return can("dashboard:read");
+    if (item.url === "/pos") return can("sales:write");
     return true;
+  });
+
+  const filteredInventoryNav = inventoryNavItems.filter(item => {
+    if (item.url === "/products") return can("products:read");
+    if (item.url === "/inventory") return can("inventory:read");
+    return false;
+  });
+
+  const filteredSalesNav = salesNavItems.filter(item => {
+    if (item.url === "/sales") return can("sales:read");
+    if (item.url === "/customers") return can("customers:read");
+    return false;
+  });
+
+  const filteredPurchaseNav = purchaseNavItems.filter(item => {
+    if (item.url === "/purchases") return can("purchases:read");
+    if (item.url === "/suppliers") return can("suppliers:read");
+    return false;
   });
 
   const filteredFinanceNav = financeNavItems.filter(item => {
     if (item.url === "/cash-register") return can("cash_register:read");
+    if (item.url === "/payments") return can("payments:read");
+    if (item.url === "/expenses") return can("expenses:read");
     if (item.url === "/reports") return can("reports:read");
-    return true;
+    return false;
   });
 
   const filteredAdminNav = adminNavItems.filter(item => {
     if (item.url === "/settings") return can("settings:read");
-    return true;
+    return false;
   });
 
   return (
@@ -151,9 +172,9 @@ export function AppSidebar() {
 
       <SidebarContent className="py-2">
         {filteredMainNav.length > 0 && <NavGroup label="Main" items={filteredMainNav} />}
-        <NavGroup label="Inventory" items={inventoryNavItems} />
-        <NavGroup label="Sales" items={salesNavItems} />
-        <NavGroup label="Purchases" items={purchaseNavItems} />
+        {filteredInventoryNav.length > 0 && <NavGroup label="Inventory" items={filteredInventoryNav} />}
+        {filteredSalesNav.length > 0 && <NavGroup label="Sales" items={filteredSalesNav} />}
+        {filteredPurchaseNav.length > 0 && <NavGroup label="Purchases" items={filteredPurchaseNav} />}
         {filteredFinanceNav.length > 0 && <NavGroup label="Finance" items={filteredFinanceNav} />}
         {filteredAdminNav.length > 0 && <NavGroup label="Admin" items={filteredAdminNav} />}
       </SidebarContent>
